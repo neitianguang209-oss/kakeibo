@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <rect width="1024" height="1024" fill="#c27a56"/>
+  <!-- くすんだテラコッタの地に、生成りの貯金箱(ぶた)ひとつ -->
+  <g fill="#f6eee2">
+    <ellipse cx="500" cy="560" rx="270" ry="215"/>
+    <path d="M590 380 L640 285 L695 375 Z"/>
+    <rect x="345" y="700" width="70" height="110" rx="30"/>
+    <rect x="560" y="700" width="70" height="110" rx="30"/>
+    <ellipse cx="770" cy="560" rx="62" ry="78"/>
+    <path d="M232 520 q-60 -30 -40 -90 q12 40 50 52 Z"/>
+  </g>
+  <rect x="440" y="372" width="130" height="26" rx="13" fill="#c27a56"/>
+  <circle cx="650" cy="490" r="20" fill="#c27a56"/>
+  <ellipse cx="770" cy="560" rx="14" ry="20" fill="#c27a56"/>
+</svg>
