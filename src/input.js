@@ -237,13 +237,64 @@ function parseLines(text, conf) {
   }
   return out;
 }
+// CSV を1文字ずつ読む(メモの中のカンマ・改行・"" に対応)
+function csvRows(text) {
+  const out = [];
+  let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) {
+      if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ',') { row.push(cell); cell = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cell); out.push(row); row = []; cell = ''; }
+    else cell += ch;
+  }
+  if (cell || row.length) { row.push(cell); out.push(row); }
+  return out;
+}
+// シンプル家計簿(MoneyNote)の書き出し: #DAILY_DATAS(記録)と #CATEGORIES(カテゴリ名)の2つの表を使う
+function parseMoneyNote(text) {
+  if (!/^﻿?#DAILY_DATAS/.test(text)) return null;
+  const rows = csvRows(text.replace(/^﻿/, ''));
+  const sec = {};
+  let cur = null;
+  for (const r of rows) {
+    if (r[0] && r[0].startsWith('#')) { cur = r[0].slice(1); sec[cur] = []; continue; }
+    if (cur && r.some((c) => c !== '')) sec[cur].push(r);
+  }
+  const catName = new Map((sec.CATEGORIES || []).slice(1).map((r) => [r[0], r[1]]));
+  const out = [];
+  for (const r of (sec.DAILY_DATAS || []).slice(1)) {
+    const [d, amt, memo, cid, typ] = r;
+    const m = (d || '').match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+    const amount = Math.round(+amt);
+    if (!m || !(amount > 0)) continue;
+    const name = catName.get(cid) || 'その他';
+    let type = typ === '1' ? 'in' : 'out';
+    let cat = name;
+    if (name === '投資') { type = 'inv'; cat = '投資'; } // 投資は支出に入れない
+    else if (name === 'バイト' && type === 'out') cat = 'その他';
+    out.push({ date: `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`, amount, cat, memo: (memo || '').replace(/\\n/g, ' ').trim().slice(0, 60), type, on: true });
+  }
+  return out;
+}
 export function ImportSheet({ onClose }) {
   const app = useApp();
   const conf = getConf();
   const [text, setText] = useState('');
-  const rows = useMemo(() => parseLines(text, conf), [text]);
+  const mn = useMemo(() => parseMoneyNote(text), [text]);
+  const rows = useMemo(() => mn || parseLines(text, conf), [text, mn]);
   const [off, setOff] = useState(new Set());
   const existing = useMemo(() => new Set(txs().map((t) => `${t.date}|${t.amount}|${fold(t.memo)}`)), []);
+  // MoneyNote は「日付・種類・金額」が同じ記録を1件ずつ突き合わせる(取り込み済みの分は二重に入れない)
+  const mnDup = useMemo(() => {
+    if (!mn) return null;
+    const have = new Map();
+    for (const t of txs()) { const k = `${t.date}|${t.type}|${t.amount}`; have.set(k, (have.get(k) || 0) + 1); }
+    return mn.map((r) => { const k = `${r.date}|${r.type}|${r.amount}`; const n = have.get(k) || 0; if (n > 0) { have.set(k, n - 1); return true; } return false; });
+  }, [mn]);
+  const isDup = (r, i) => (mnDup ? mnDup[i] : existing.has(`${r.date}|${r.amount}|${fold(r.memo)}`));
   const fileRef = useRef(null);
   const loadFile = async (f) => {
     if (!f) return;
@@ -252,9 +303,9 @@ export function ImportSheet({ onClose }) {
     if (t.includes('�')) t = new TextDecoder('shift_jis').decode(buf);
     setText(t);
   };
-  const use = rows.filter((r, i) => !off.has(i) && !existing.has(`${r.date}|${r.amount}|${fold(r.memo)}`));
+  const use = rows.filter((r, i) => !off.has(i) && !isDup(r, i));
   const save = async (close) => {
-    await S.saveMany('tx', use.map((r, i) => ({ id: uid('i'), type: r.type, amount: r.amount, cat: r.cat, date: r.date, memo: r.memo, src: 'import', t: Date.now() + i })));
+    await S.saveMany('tx', use.map((r, i) => ({ id: uid(mn ? 'mn' : 'i'), type: r.type, amount: r.amount, cat: r.cat, date: r.date, memo: r.memo, src: mn ? 'moneynote' : 'import', t: Date.now() + i })));
     close();
     app.toast(`${use.length}件を取り込みました`);
   };
@@ -264,9 +315,10 @@ export function ImportSheet({ onClose }) {
     <textarea class="paste" rows="6" placeholder=${'例)\n2026/11/20 食費 1280 スーパー\n11/21 ランチ 980\n11/25 給料 +180000'} value=${text} onChange=${(e) => setText(e.target.value)}></textarea>
     <button class="text-btn" onClick=${() => fileRef.current.click()}>📄 CSVファイルを選ぶ</button>
     <input ref=${fileRef} type="file" accept=".csv,.txt,text/*" hidden onChange=${(e) => loadFile(e.target.files[0])} />
+    ${mn && html`<div class="note">シンプル家計簿(MoneyNote)の書き出しを見つけました。${mn.length}件のうち、記録ずみ ${mnDup.filter(Boolean).length}件・新しく入れる ${use.length}件です。</div>`}
     ${rows.length > 0 && html`<div class="import-list">
-      ${rows.map((r, i) => {
-        const dup = existing.has(`${r.date}|${r.amount}|${fold(r.memo)}`);
+      ${(mn ? rows.map((r, i) => [r, i]).filter(([, i]) => !mnDup[i]).slice(-300) : rows.map((r, i) => [r, i])).map(([r, i]) => {
+        const dup = isDup(r, i);
         return html`<label key=${i} class=${'imp-row' + (dup ? ' dup' : '')}>
           <input type="checkbox" checked=${!off.has(i) && !dup} disabled=${dup} onChange=${() => { const n = new Set(off); n.has(i) ? n.delete(i) : n.add(i); setOff(n); }} />
           <span class="d">${r.date.slice(5).replace('-', '/')}</span><span>${catInfo(r.cat, conf).icon} ${r.cat}</span><span class="m">${r.memo}${dup ? '(記録ずみ)' : ''}</span><b class=${'num ' + (r.type === 'in' ? 'in' : '')}>${r.type === 'in' ? '+' : ''}${yen(r.amount)}</b>
