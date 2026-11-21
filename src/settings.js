@@ -4,9 +4,21 @@ import { html, useApp, Sheet, Seg, Field, NumInput, Empty } from './ui.js';
 import { yen, uid, today, ym, catList, catInfo, addMonths, sum, PAY } from './util.js';
 import { txs, getConf, monthlyOf, cashAt, upcoming } from './calc.js';
 import * as S from './store.js';
-import { getKey, setKey, lsSet } from './api.js';
+import { getKey, setKey, lsSet, lsGet } from './api.js';
 
-export const VERSION = '1.0.0';
+export const VERSION = '1.1.0';
+
+// テーマ(色合い)。収入=青・支出=朱などの「意味のある色」は、どのテーマでも変えない
+export const SKINS = [
+  { id: 'orange', name: 'オレンジ', c: '#ff8a00' },
+  { id: 'mono', name: 'モノトーン', c: '#2b2b2b' },
+  { id: 'forest', name: 'フォレスト', c: '#2f8f5b' },
+  { id: 'pink', name: 'ドリーミーピンク', c: '#e5719c' },
+  { id: 'navy', name: 'ネイビー', c: '#3b5fc4' },
+];
+export function applySkin(id) {
+  document.documentElement.dataset.skin = SKINS.some((s) => s.id === id) ? id : 'orange';
+}
 
 export function Settings() {
   const app = useApp();
@@ -14,6 +26,8 @@ export function Settings() {
   const [key, setK] = useState('');
   const cash = cashAt(txs(), conf);
   const st = S.sync;
+  const skin = conf.skin || lsGet('kakeibo:skin') || 'orange';
+  const pickSkin = (id) => { applySkin(id); lsSet('kakeibo:skin', id); S.setConf({ skin: id }); };
   const saveKey = async () => {
     setKey(key.trim());
     S.resetPull();
@@ -40,10 +54,42 @@ export function Settings() {
       }
     });
   };
+  const goal = conf.goal;
   return html`<div class="page settings">
-    <header class="top"><button class="icon-btn" onClick=${() => history.back()} aria-label="もどる">‹</button><h1>設定</h1></header>
+    <header class="bar"><span class="bar-l"></span><h1>メニュー</h1><span class="bar-r"></span></header>
+
+    <h4 class="grp">資産</h4>
     <section class="card">
-      <h3>☁️ 同期</h3>
+      <button class="row" onClick=${() => app.go('assets')}><span class="ri">📈</span><span class="rm">資産・株・積立<small>総資産の推移、持っている株、積立の損益</small></span><span class="chev">›</span></button>
+      <button class="row" onClick=${() => app.open('goal')}><span class="ri">🎯</span><span class="rm">貯める目標<small>${goal?.amount ? `${goal.name || '目標'} ${yen(goal.amount)}` : '未設定'}</small></span><span class="chev">›</span></button>
+      <button class="row" onClick=${() => app.open('cash')}><span class="ri">👛</span><span class="rm">手元のお金<small>${cash == null ? '未設定(総資産に入れるなら設定)' : yen(cash)}</small></span><span class="chev">›</span></button>
+    </section>
+
+    <h4 class="grp">家計の管理</h4>
+    <section class="card">
+      <button class="row" onClick=${() => app.go('budget')}><span class="rm">予算<small>${conf.budget ? yen(conf.budget) + (Object.keys(conf.catBudgets || {}).length ? `・カテゴリ別 ${Object.keys(conf.catBudgets).length}つ` : '') : '未設定'}</small></span><span class="chev">›</span></button>
+      <button class="row" onClick=${() => app.go('recs')}><span class="rm">固定費・サブスク・給料<small>${S.all('rec').filter((r) => r.active !== false).length}件・毎回自動で記録</small></span><span class="chev">›</span></button>
+      <label class="row"><span class="rm">月の始まり<small>給料日にすると「給料日〜次の給料日の前日」で1か月</small></span>
+        <select value=${conf.startDay} onChange=${(e) => S.setConf({ startDay: +e.target.value })}>${Array.from({ length: 28 }, (_, i) => html`<option key=${i} value=${i + 1}>${i + 1}日から</option>`)}</select></label>
+      <button class="row" onClick=${() => app.open('cats')}><span class="rm">カテゴリを足す・隠す</span><span class="chev">›</span></button>
+    </section>
+
+    <h4 class="grp">くわしいレポート</h4>
+    <section class="card">
+      <button class="row" onClick=${() => app.go('report/year')}><span class="rm">年間のレポート<small>1年の収支・月ごとの一覧・カテゴリ</small></span><span class="chev">›</span></button>
+      <button class="row" onClick=${() => app.go('report/all')}><span class="rm">全期間のレポート<small>はじめてから今まで</small></span><span class="chev">›</span></button>
+      <button class="row" onClick=${() => app.go('assets')}><span class="rm">残高・資産の推移<small>資産のグラフへ</small></span><span class="chev">›</span></button>
+    </section>
+
+    <h4 class="grp">見た目</h4>
+    <section class="card">
+      <div class="skin-row" role="radiogroup" aria-label="テーマ">${SKINS.map((s) => html`<button key=${s.id} role="radio" aria-checked=${skin === s.id} class=${'skin' + (skin === s.id ? ' on' : '')} onClick=${() => pickSkin(s.id)}><i style=${{ background: s.c }}></i><span>${s.name}</span></button>`)}</div>
+      <p class="muted small">色合いだけが変わります。収入(青)と支出(朱)の色は、どのテーマでも同じです。</p>
+    </section>
+
+    <h4 class="grp">データ</h4>
+    <section class="card">
+      <div class="card-h"><h3>☁️ 同期</h3></div>
       ${getKey()
         ? html`<div class="row"><span class="rm">スマホとパソコンで同じ記録<small>${st.state === 'err' ? '⚠️ ' + st.msg : st.last ? '最後に同期: ' + new Date(st.last).toLocaleString('ja-JP') : 'まだ'}</small></span><button class="btn small" onClick=${() => S.pull()}>今すぐ</button></div>
           <details><summary class="muted small">合言葉を変える</summary><div class="inline"><input type="password" value=${key} onChange=${(e) => setK(e.target.value)} placeholder="合言葉" /><button class="btn small" onClick=${saveKey}>保存</button></div></details>`
@@ -51,27 +97,19 @@ export function Settings() {
           <div class="inline"><input type="password" value=${key} onChange=${(e) => setK(e.target.value)} placeholder="合言葉" /><button class="btn small primary" onClick=${saveKey}>保存</button></div>`}
     </section>
     <section class="card">
-      <h3>🐷 お金の決めごと</h3>
-      <button class="row" onClick=${() => app.open('budget')}><span class="rm">月の予算<small>${conf.budget ? yen(conf.budget) + (Object.keys(conf.catBudgets || {}).length ? `・カテゴリ別 ${Object.keys(conf.catBudgets).length}つ` : '') : '未設定'}</small></span><span class="chev">›</span></button>
-      <label class="row"><span class="rm">月の始まり<small>給料日にすると「給料日〜次の給料日の前日」で1か月</small></span>
-        <select value=${conf.startDay} onChange=${(e) => S.setConf({ startDay: +e.target.value })}>${Array.from({ length: 28 }, (_, i) => html`<option key=${i} value=${i + 1}>${i + 1}日から</option>`)}</select></label>
-      <button class="row" onClick=${() => app.go('recs')}><span class="rm">固定費・サブスク・給料<small>${S.all('rec').filter((r) => r.active !== false).length}件・毎回自動で記録</small></span><span class="chev">›</span></button>
-      <button class="row" onClick=${() => app.open('cash')}><span class="rm">手元のお金<small>${cash == null ? '未設定(総資産に入れるなら設定)' : yen(cash)}</small></span><span class="chev">›</span></button>
-      <button class="row" onClick=${() => app.open('cats')}><span class="rm">カテゴリを足す・隠す</span><span class="chev">›</span></button>
-    </section>
-    <section class="card">
-      <h3>📥 取り込み・書き出し</h3>
-      <button class="row" onClick=${() => app.open('import')}><span class="rm">ほかの家計簿アプリから取り込む<small>CSV・貼り付け</small></span><span class="chev">›</span></button>
+      <button class="row" onClick=${() => app.open('import')}><span class="rm">ほかの家計簿アプリから取り込む<small>シンプル家計簿(MoneyNote)のCSV・貼り付け</small></span><span class="chev">›</span></button>
       <button class="row" onClick=${exportFile}><span class="rm">控えを書き出す(JSON)<small>通信なしでも動きます</small></span><span class="chev">›</span></button>
       <label class="row"><span class="rm">控えから戻す</span><span class="chev">›</span><input type="file" accept=".json,application/json" hidden onChange=${(e) => importFile(e.target.files[0])} /></label>
     </section>
+
+    <h4 class="grp">ヘルプ</h4>
     <section class="card">
-      <h3>🤖 Claudeとの連携</h3>
+      <div class="card-h"><h3>🤖 Claudeとの連携</h3></div>
       <p class="muted">claude.ai のアプリにレシートや支払い画面のスクショを貼って「家計簿」と送ると、Claudeが読み取ってこのアプリに記録します(Claudeへの指示に家計簿のルールを入れてある場合)。記録には「Claude」の印がつきます。</p>
       <p class="muted">アプリの中の 📷 レシート ボタンでも、その場でAIが読み取れます。</p>
     </section>
     <section class="card">
-      <h3>📱 ホーム画面に置く</h3>
+      <div class="card-h"><h3>📱 ホーム画面に置く</h3></div>
       <p class="muted">iPhone: Safari で開いて 共有 →「ホーム画面に追加」。Android: Chrome のメニュー →「ホーム画面に追加」。</p>
     </section>
     <p class="fine center">家計簿 v${VERSION}・記録 ${S.all('tx').length}件</p>

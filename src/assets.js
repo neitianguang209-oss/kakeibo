@@ -2,8 +2,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { html, useApp, Seg, Sheet, Empty, Field, NumInput } from './ui.js';
 import { LineChart, Spark } from './charts.js';
-import { yen, pm, pct, tone, today, addDays, parseD, md, short, uid, sum, ym, jpDay } from './util.js';
-import { txs, getConf, cashAt, positions, assetSeries, planBuys, priceAt, unitOf, isFundSym } from './calc.js';
+import { yen, pm, pct, tone, today, addDays, addMonths, periodKeyOf, parseD, md, short, uid, sum, ym, jpDay } from './util.js';
+import { txs, getConf, summary, cashAt, positions, assetSeries, planBuys, priceAt, unitOf, isFundSym } from './calc.js';
 import { getQuotes, loadQuotes, PRESET_WATCH, PRESET_FUNDS, PRESET_SEMI } from './quotes.js';
 import * as S from './store.js';
 import { fn, getKey } from './api.js';
@@ -66,7 +66,7 @@ export function Assets({ qv }) {
   const plans = open.filter((p) => p.plan);
 
   return html`<div class="page assets">
-    <header class="top"><h1>資産</h1><button class=${'icon-btn' + (busy ? ' spin' : '')} onClick=${reload} aria-label="値段を取り直す">↻</button></header>
+    <header class="top"><button class="icon-btn" onClick=${() => history.back()} aria-label="もどる">‹</button><h1>資産</h1><button class=${'icon-btn' + (busy ? ' spin' : '')} onClick=${reload} aria-label="値段を取り直す">↻</button></header>
     ${!getKey() && html`<div class="note">株価・基準価額を取ってくるには、設定で合言葉を入れてください。</div>`}
     <section class="card hero">
       <div class="label">総資産</div>
@@ -91,6 +91,9 @@ export function Assets({ qv }) {
       ${cash == null && html`<button class="text-btn" onClick=${() => app.open('cash')}>手元のお金(口座・財布の残高)を入れる ›</button>`}
       ${cash != null && html`<button class="text-btn" onClick=${() => app.open('cash')}>残高を実際に合わせる ›</button>`}
     </section>
+
+
+    <${GoalCard} total=${(cash || 0) + inv} list=${list} conf=${conf} />
 
     <div class="btn-row">
       <button class="btn" onClick=${() => app.open('lot')}>＋ 株・投信を買った</button>
@@ -554,5 +557,47 @@ export function CashSheet({ onClose }) {
     foot=${(close) => html`<button class="btn primary wide" onClick=${() => save(close)}>保存</button>`}>
     <p class="muted">${conf.cashStart ? `アプリの計算ではいま ${yen(cur)}。銀行・財布・PayPayなどの実際の合計を入れると、差を「残高あわせ」として記録します(支出には数えません)。` : '銀行口座・財布・PayPayなどの、今の残高の合計を入れてください。ここから先は、記録した収入・支出・投資で自動で増減します(証券口座のお金は除く)。'}</p>
     <div class="form"><${Field} label="今の合計"><${NumInput} value=${v} onChange=${setV} placeholder=${cur != null ? String(cur) : '例: 250000'} suffix="円" /></${Field}></div>
+  </${Sheet}>`;
+}
+
+// ---- 貯める目標(総資産がどこまで来たか・毎月の投資額)
+function GoalCard({ total, list, conf }) {
+  const app = useApp();
+  const g = conf.goal;
+  const curKey = periodKeyOf(today(), conf.startDay);
+  const past = [1, 2, 3].map((i) => summary(list, addMonths(curKey, -i), conf));
+  const monthlyInv = Math.round(sum(past, (p) => p.inv) / 3);
+  if (!g?.amount) {
+    return html`<button class="card goal-unset" onClick=${() => app.open('goal')}><b>🎯 貯める目標を決める</b><small>例: 「旅行資金 30万円」「100万円」。総資産がどこまで来たか、ここに出ます${monthlyInv ? `(いま毎月 約${yen(monthlyInv)} を投資に回しています)` : ''}</small></button>`;
+  }
+  const r = Math.max(0, Math.min(1, total / g.amount));
+  const left = g.amount - total;
+  const months = g.date ? Math.max(0, Math.round((parseD(g.date) - parseD(today())) / 864e5 / 30.4)) : null;
+  return html`<section class="card goal" onClick=${() => app.open('goal')}>
+    <div class="card-h"><h3>🎯 ${g.name || '目標'}</h3><span class="num">${yen(g.amount)}</span></div>
+    <div class="meter"><i style=${{ width: `${r * 100}%`, background: 'var(--accent)' }}></i></div>
+    <div class="goal-foot"><span>${Math.round(r * 100)}% 達成</span><span>${left > 0 ? `あと ${yen(left)}` : '達成しました 🎉'}</span></div>
+    ${left > 0 && months != null && months > 0 && html`<small class="muted">${g.date.slice(0, 4)}年${+g.date.slice(5, 7)}月まで あと${months}か月 → 毎月 約${yen(Math.ceil(left / months))} ずつ</small>`}
+    ${monthlyInv > 0 && html`<small class="muted">いま毎月 約${yen(monthlyInv)} を投資に回しています(直近3か月の平均)</small>`}
+  </section>`;
+}
+
+export function GoalSheet({ onClose }) {
+  const app = useApp();
+  const g = getConf().goal || {};
+  const [name, setName] = useState(g.name || '');
+  const [amount, setAmount] = useState(g.amount ? String(g.amount) : '');
+  const [date, setDate] = useState(g.date || '');
+  const save = async (close) => {
+    await S.setConf({ goal: +amount > 0 ? { name: name.trim(), amount: +amount, date } : null });
+    close();
+    app.toast(+amount > 0 ? '目標を保存しました' : '目標をはずしました');
+  };
+  return html`<${Sheet} title="貯める目標" onClose=${onClose} foot=${(close) => html`<button class="btn primary wide" onClick=${() => save(close)}>保存</button>`}>
+    <div class="form">
+      <${Field} label="名前(なくてもOK)"><input value=${name} onChange=${(e) => setName(e.target.value)} placeholder="例: 旅行資金" /></${Field}>
+      <${Field} label="めざす額" hint="総資産(手元のお金+投資の評価額)がこの額に届くまでを表示します。空にして保存すると、目標をはずせます"><${NumInput} value=${amount} onChange=${setAmount} placeholder="例: 1000000" suffix="円" /></${Field}>
+      <${Field} label="いつまでに(なくてもOK)"><input type="date" value=${date} onChange=${(e) => setDate(e.target.value)} /></${Field}>
+    </div>
   </${Sheet}>`;
 }

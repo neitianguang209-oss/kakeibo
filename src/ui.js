@@ -105,13 +105,12 @@ export function Keypad({ expr, setExpr, onDone, doneLabel = 'OK', accent }) {
   };
   const hasOp = /[+\-×÷]/.test(expr);
   const k = (key, label = key, cls = '') => html`<button key=${key} class=${cls} onClick=${() => press(key)}>${label}</button>`;
-  // 5列: 数字3列 + 消す・計算 + 記録(下2段ぶん)
+  // 5列: 数字3列 + 消す・計算。登録は画面の下の大きなボタン
   return html`<div class="keypad">
     ${k('7')}${k('8')}${k('9')}${k('⌫', '⌫', 'op')}${k('÷', '÷', 'op')}
     ${k('4')}${k('5')}${k('6')}${k('-', '−', 'op')}${k('×', '×', 'op')}
-    ${k('1')}${k('2')}${k('3')}${k('+', '+', 'op')}
-    <button class="kp-done" style=${accent ? { background: accent } : null} onClick=${onDone}>${doneLabel}</button>
-    ${k('C', 'C', 'kp-c')}${k('0')}${k('00')}${hasOp ? k('=', '=', 'op') : html`<span></span>`}
+    ${k('1')}${k('2')}${k('3')}${k('+', '+', 'op')}${k('C', 'C', 'kp-c')}
+    ${k('0', '0', 'k0')}${k('00')}${k('=', '=', 'op k2')}
   </div>`;
 }
 

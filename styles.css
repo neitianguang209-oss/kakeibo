@@ -590,3 +590,62 @@ details summary { cursor: pointer; padding: 6px 0; }
 
 .row select { width: auto; flex: none; max-width: 46%; min-height: 38px; padding: 6px 28px 6px 10px; }
 .row .rm { min-width: 0; }
+
+/* ===== v1.1: 浮かぶタブ・大きな電卓・登録ボタン・予算・メニューのグループ・テーマ ===== */
+.tabbar { left: 12px; right: 12px; bottom: calc(8px + var(--safe-b)); margin: 0 auto; max-width: 536px; border-radius: 30px; border: 1px solid var(--line); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16); padding: 4px 6px; }
+.tabbar a, .tabbar button { border-radius: 24px; min-height: 54px; }
+.tabbar a.on, .tabbar button.on { background: var(--accent-soft); }
+.bottom-space { height: calc(112px + var(--safe-b)); }
+.sheet-foot .reg { min-height: 54px; font-size: 17px; letter-spacing: 0.02em; }
+
+.keypad { grid-auto-rows: 54px; gap: 7px; margin-top: 4px; }
+.keypad button { font-size: 24px; border-radius: 16px; }
+.keypad .op { font-size: 22px; }
+.keypad .kp-c { font-size: 18px; }
+.keypad .k0 { grid-column: span 2; }
+.keypad .k2 { grid-column: span 2; }
+.view-seg { margin: 8px 0 0; }
+
+.grp { margin: 18px 4px 6px; font-size: 12.5px; color: var(--ink3); font-weight: 700; letter-spacing: 0.04em; }
+.settings .card { margin-top: 0; }
+.skin-row { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 2px; }
+.skin { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--card); font-size: 13.5px; font-weight: 600; min-height: 44px; }
+.skin i { width: 18px; height: 18px; border-radius: 50%; display: block; }
+.skin.on { border-color: var(--accent); background: var(--accent-soft); }
+
+.bud-total { padding: 14px; display: block; width: 100%; text-align: left; }
+.bt-top { display: flex; justify-content: space-between; align-items: baseline; color: var(--ink2); font-size: 13px; }
+.bt-top b { font-size: 18px; color: var(--ink); }
+.bt-left { display: flex; justify-content: space-between; align-items: baseline; margin: 6px 0 8px; }
+.bt-left span { color: var(--ink2); font-size: 13px; }
+.bt-left b { font-size: 30px; font-weight: 800; }
+.bt-foot { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--ink3); margin-top: 8px; }
+.bud-unset, .goal-unset { display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left; padding: 14px; border: 1.5px dashed var(--line); }
+.bud-unset small, .goal-unset small { color: var(--ink2); font-size: 12.5px; line-height: 1.5; }
+.bud-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.bud-row2 { display: flex; align-items: flex-start; gap: 10px; width: 100%; text-align: left; padding: 11px 12px; }
+.br-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.br-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.br-top b { font-size: 15px; }
+.br-main small { color: var(--ink3); font-size: 11.5px; }
+.muted-s { color: var(--ink3); font-size: 12px; }
+.goal { cursor: pointer; display: block; }
+.goal .card-h .num { font-weight: 800; }
+.goal-foot { display: flex; justify-content: space-between; font-size: 13px; color: var(--ink2); margin: 6px 0 4px; }
+.goal small.muted { display: block; margin-top: 2px; }
+
+/* テーマ: 色合いだけ変える(収入=青・支出=朱は共通) */
+:root[data-skin='mono'] { --accent: #2f2f2f; --accent-soft: #ebebeb; --bar: #e5e5e5; --bg: #f4f4f4; }
+:root[data-skin='forest'] { --accent: #2f8f5b; --accent-soft: #e3f1e8; --bar: #e5ece6; --bg: #f2f5f1; }
+:root[data-skin='pink'] { --accent: #e5719c; --accent-soft: #fde7ef; --bar: #f6e8ed; --bg: #fbf4f6; }
+:root[data-skin='navy'] { --accent: #3b5fc4; --accent-soft: #e4e9f8; --bar: #e5e8f1; --bg: #f3f5fa; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light'])[data-skin='mono'] { --accent: #8c8c8c; --accent-soft: #303030; --bar: #222; --bg: #121212; --card: #1c1c1c; }
+  :root:not([data-theme='light'])[data-skin='forest'] { --accent: #3fae72; --accent-soft: #1f3328; --bar: #1d2420; --bg: #121614; --card: #1a201d; }
+  :root:not([data-theme='light'])[data-skin='pink'] { --accent: #e2709b; --accent-soft: #3a2430; --bar: #2a1f24; --bg: #181316; --card: #221a1e; }
+  :root:not([data-theme='light'])[data-skin='navy'] { --accent: #5b7de0; --accent-soft: #202a47; --bar: #1c2130; --bg: #12141b; --card: #1a1e29; }
+}
+.keypad { grid-auto-rows: 50px; gap: 6px; }
+.ktool .paysel { width: auto; flex: none; min-height: 32px; padding: 3px 24px 3px 8px; font-size: 12px; border-radius: 8px; border: 1px solid var(--line); background-color: var(--card); max-width: 96px; }
+.ktool { gap: 6px; }
+.cat-grid .cat { padding: 3px 1px; }

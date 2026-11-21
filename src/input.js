@@ -38,7 +38,7 @@ export function EntrySheet({ tx, preset = {}, onClose }) {
   }, [all]);
   const baseCats = type === 'inv' ? INV_CATS : catList(type, conf);
   const cats = [...baseCats].map((c, i) => ({ ...c, i })).sort((a, b) => (usage.get(b.id) || 0) - (usage.get(a.id) || 0) || a.i - b.i);
-  const LIMIT = 14;
+  const LIMIT = 9;
   const shownCats = moreCats || cats.length <= LIMIT + 1 ? cats : (() => { const top = cats.slice(0, LIMIT); if (cat && !top.some((c) => c.id === cat)) top[LIMIT - 1] = cats.find((c) => c.id === cat); return top; })();
   const sugg = useMemo(() => memoSuggest(all, null, type), [all, type]);
   const amount = evalExpr(expr);
@@ -83,7 +83,8 @@ export function EntrySheet({ tx, preset = {}, onClose }) {
   if (showReceipt) return html`<${ReceiptSheet} onClose=${() => setShowReceipt(false)} onDone=${onClose} />`;
 
   return html`<${Sheet} title=${editing ? '記録を直す' : '記録する'} onClose=${onClose} full
-    right=${!editing && html`<button class="chip-btn" onClick=${() => setShowReceipt(true)}>📷 レシート</button>`}>
+    right=${!editing && html`<button class="chip-btn" onClick=${() => setShowReceipt(true)}>📷 レシート</button>`}
+    foot=${(close) => html`<button class="btn primary wide big reg" style=${{ background: accent, borderColor: accent }} onClick=${() => doSave(close)}>${editing ? '直して保存する' : (type === 'in' ? '収入' : type === 'inv' ? '投資' : '支出') + 'を入力する'}</button>`}>
     ${(close) => html`<div class="entry">
       <${Seg} value=${type} onChange=${setType} options=${TYPES} />
       <div class="frow"><span class="fl">日付</span>
@@ -104,14 +105,14 @@ export function EntrySheet({ tx, preset = {}, onClose }) {
         })}
         ${shownCats.length < cats.length && html`<button class="cat more" onClick=${() => setMoreCats(true)}><span class="ci">⋯</span><span class="cn">ほか${cats.length - shownCats.length}つ</span></button>`}
       </div>
-      ${type === 'out' && html`<div class="row-chips">${PAY.map((p) => html`<button key=${p} class=${'chip small' + (pay === p ? ' on' : '')} onClick=${() => setPay(pay === p ? '' : p)}>${p}</button>`)}</div>`}
       ${editing && html`<div class="entry-foot"><button class="text-btn danger" onClick=${() => del(close)}>この記録を消す</button></div>`}
       <div class="ktool">
         ${!editing ? html`<label class="cont"><input type="checkbox" checked=${cont} onChange=${(e) => setCont(e.target.checked)} /> 続けて入力${count ? `(${count})` : ''}</label>` : html`<span></span>`}
+        ${type === 'out' && html`<select class="paysel" value=${pay} onChange=${(e) => setPay(e.target.value)} aria-label="払い方"><option value="">払い方</option>${PAY.map((p) => html`<option key=${p} value=${p}>${p}</option>`)}</select>`}
         <button class="tax" onClick=${() => amount && setExpr(String(Math.round(amount * 1.08)))}>税込8%</button>
         <button class="tax" onClick=${() => amount && setExpr(String(Math.round(amount * 1.1)))}>税込10%</button>
       </div>
-      <${Keypad} expr=${expr} setExpr=${setExpr} onDone=${() => doSave(close)} doneLabel=${editing ? '直す' : '完了'} accent=${accent} />
+      <${Keypad} expr=${expr} setExpr=${setExpr} />
     </div>`}
   </${Sheet}>`;
 }
