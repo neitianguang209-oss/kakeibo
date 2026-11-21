@@ -333,7 +333,7 @@ export function insights(list, conf) {
   if (ratio > 0.6 && hasHistory) {
     const usual = new Map();
     for (const p of prevs) for (const c of p.byCat) usual.set(c.cat, (usual.get(c.cat) || 0) + 1);
-    for (const cat of ['水道光熱', '通信', '住まい']) {
+    for (const cat of ['光熱費', '通信', '住まい']) {
       if ((usual.get(cat) || 0) >= 2 && !cur.byCat.some((c) => c.cat === cat) && !recs.some((r) => r.cat === cat)) {
         out.push({ k: 'miss:' + cat, icon: catInfo(cat, conf).icon, level: 'todo', title: `${cat}、今月まだ記録がありません`, body: `ここ3か月は毎月ついていました。「固定費・サブスク」に登録すると、次から自動で入ります(金額が毎回ちがうものは「金額は毎回ちがう」にすると、仮の金額で入って確認を促します)。`, go: 'recs' });
       }

@@ -2,6 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { html, useApp, Seg, Empty } from './ui.js';
 import { Donut, Bars, Meter } from './charts.js';
+import { MonthPill } from './records.js';
 import { yen, pct, today, periodKeyOf, addMonths, sum, catInfo, GROUPS, short, jpDay, md } from './util.js';
 import { txs, summary, getConf, insights, nextMonthPlan, monthLabel } from './calc.js';
 import * as S from './store.js';
@@ -52,12 +53,11 @@ export function Report() {
   };
 
   return html`<div class="page report">
-    <header class="top">
-      <button class="month-btn" onClick=${() => { setKey(addMonths(key, -1)); setPicked(null); }} aria-label="前の月">‹</button>
-      <h1 onClick=${() => setKey(periodKeyOf(today(), conf.startDay))}>${monthLabel(key)}</h1>
-      <button class="month-btn" onClick=${() => { setKey(addMonths(key, 1)); setPicked(null); }} aria-label="次の月">›</button>
-    </header>
-    <${Seg} small value=${mode} onChange=${(v) => { setMode(v); setPicked(null); }} options=${[{ v: 'out', label: '支出' }, { v: 'in', label: '収入' }]} />
+    <header class="bar"><span class="bar-l"></span><h1>レポート</h1><span class="bar-r"></span></header>
+    <${MonthPill} s=${s} onPrev=${() => { setKey(addMonths(key, -1)); setPicked(null); }} onNext=${() => { setKey(addMonths(key, 1)); setPicked(null); }} onToday=${() => setKey(periodKeyOf(today(), conf.startDay))} />
+    <div class="box2"><div><span>支出</span><b class="num out">${yen(s.out)}</b></div><div><span>収入</span><b class="num in">${yen(s.in)}</b></div></div>
+    <div class="box1"><span>収支</span><b class=${'num ' + (s.in - s.out >= 0 ? 'in' : 'out')}>${yen(s.in - s.out, true)}</b>${s.inv > 0 && html`<small>投資へ ${yen(s.inv)}</small>`}</div>
+    <div class="utabs" role="tablist"><button role="tab" aria-selected=${mode === 'out'} class=${mode === 'out' ? 'on' : ''} onClick=${() => { setMode('out'); setPicked(null); }}>支出</button><button role="tab" aria-selected=${mode === 'in'} class=${mode === 'in' ? 'on in' : ''} onClick=${() => { setMode('in'); setPicked(null); }}>収入</button></div>
     <section class="card">
       ${rows.length ? html`<div class="donut-wrap"><${Donut} data=${donut} center=${yen(tot)} sub=${mode === 'out' ? '支出' : '収入'} picked=${picked} onPick=${setPicked} /></div>
         <div class="cat-list">

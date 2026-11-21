@@ -3,15 +3,9 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { html, Sheet, Seg, Keypad, evalExpr, useApp } from './ui.js';
 import * as S from './store.js';
 import { fn, getKey } from './api.js';
-import { catList, catInfo, guessCat, today, addDays, yen, uid, jpDay, PAY, fold, vibrate } from './util.js';
+import { catList, catInfo, guessCat, INV_CATS, today, addDays, yen, uid, jpDay, mdw, PAY, fold, vibrate } from './util.js';
 import { txs, memoHistory, memoSuggest, getConf } from './calc.js';
 
-const INV_CATS = [
-  { id: '積立', icon: '🌱', g: 'inv' },
-  { id: '株', icon: '📈', g: 'inv' },
-  { id: '投資信託', icon: '🧺', g: 'inv' },
-  { id: 'その他投資', icon: '💹', g: 'inv' },
-];
 const TYPES = [
   { v: 'out', label: '支出', color: 'var(--accent)' },
   { v: 'in', label: '収入', color: 'var(--c-in)' },
@@ -92,32 +86,32 @@ export function EntrySheet({ tx, preset = {}, onClose }) {
     right=${!editing && html`<button class="chip-btn" onClick=${() => setShowReceipt(true)}>📷 レシート</button>`}>
     ${(close) => html`<div class="entry">
       <${Seg} value=${type} onChange=${setType} options=${TYPES} />
-      <div class="amount" style=${{ '--ac': accent }}>
-        ${!editing && html`<label class="cont"><input type="checkbox" checked=${cont} onChange=${(e) => setCont(e.target.checked)} /> 続けて${count ? `(${count})` : ''}</label>`}
-        <span class="yen">¥</span><span class="num big">${amount ? amount.toLocaleString('ja-JP') : '0'}</span>
-        ${/[+\-×÷]/.test(expr) && html`<div class="expr">${expr}</div>`}
-      </div>
+      <div class="frow"><span class="fl">日付</span>
+        <button class="dn" onClick=${() => setDate(addDays(date, -1))} aria-label="前の日">‹</button>
+        <label class="dpill"><b>${date.slice(0, 4)}年${+date.slice(5, 7)}月${+date.slice(8)}日(${mdw(date).slice(-2, -1)})</b><input ref=${dateRef} type="date" value=${date} onChange=${(e) => e.target.value && setDate(e.target.value)} class="hidden-date" /></label>
+        <button class="dn" onClick=${() => setDate(addDays(date, 1))} aria-label="次の日">›</button></div>
+      <div class="frow"><span class="fl">メモ</span><input class="memo" placeholder="未入力" value=${memo} onChange=${(e) => setMemo(e.target.value)} maxLength="60" /></div>
+      <div class="frow amt" style=${{ '--ac': accent }}><span class="fl">${type === 'in' ? '収入' : type === 'inv' ? '投資' : '支出'}</span>
+        <div class="afield"><b class="num">${amount ? amount.toLocaleString('ja-JP') : '0'}</b>${/[+\-×÷]/.test(expr) && html`<small class="expr">${expr}</small>`}</div><span class="fu">円</span></div>
       ${tx?.pending && html`<div class="note warn">仮の金額で入っています。明細を見て、金額を直して保存してください。</div>`}
+      ${!memo && sugg.length > 0 && html`<div class="row-chips sugg">${sugg.map((s) => html`<button key=${s.memo} class="chip ghost small" onClick=${() => { setMemo(s.memo); if (!catTouched) setCat(s.cat); if (!expr) setExpr(String(s.amount)); }}>${s.memo}</button>`)}</div>`}
+      <div class="fl2">カテゴリー</div>
       <div class="cat-grid">
         ${shownCats.map((c) => {
           const ci = catInfo(c.id, conf);
-          return html`<button key=${c.id} class=${'cat' + (cat === c.id ? ' on' : '')} style=${{ '--cc': type === 'inv' ? 'var(--c-inv)' : ci.color }} onClick=${() => { vibrate(5); setCat(c.id); setCatTouched(true); }}>
+          return html`<button key=${c.id} class=${'cat' + (cat === c.id ? ' on' : '')} style=${{ '--cc': ci.color }} onClick=${() => { vibrate(5); setCat(c.id); setCatTouched(true); }}>
             <span class="ci">${c.icon}</span><span class="cn">${c.id}</span></button>`;
         })}
         ${shownCats.length < cats.length && html`<button class="cat more" onClick=${() => setMoreCats(true)}><span class="ci">⋯</span><span class="cn">ほか${cats.length - shownCats.length}つ</span></button>`}
       </div>
-      <div class="row-chips">
-        ${[today(), addDays(today(), -1), addDays(today(), -2)].map((d) => html`<button key=${d} class=${'chip' + (date === d ? ' on' : '')} onClick=${() => setDate(d)}>${jpDay(d)}</button>`)}
-        <label class=${'chip' + (![today(), addDays(today(), -1), addDays(today(), -2)].includes(date) ? ' on' : '')}>📅 ${![today(), addDays(today(), -1), addDays(today(), -2)].includes(date) ? jpDay(date) : '日付'}
-          <input ref=${dateRef} type="date" value=${date} onChange=${(e) => e.target.value && setDate(e.target.value)} class="hidden-date" /></label>
-        ${type === 'out' && html`<span class="chip-sep"></span>${PAY.map((p) => html`<button key=${p} class=${'chip small' + (pay === p ? ' on' : '')} onClick=${() => setPay(pay === p ? '' : p)}>${p}</button>`)}`}
-      </div>
-      <div class="memo-row">
-        <input class="memo" placeholder=${type === 'in' ? 'メモ(例: メルカリ 本3冊)' : 'メモ(例: ランチ、ボイトレ)'} value=${memo} onChange=${(e) => setMemo(e.target.value)} maxLength="60" />
-      </div>
-      ${!memo && sugg.length > 0 && html`<div class="row-chips sugg">${sugg.map((s) => html`<button key=${s.memo} class="chip ghost" onClick=${() => { setMemo(s.memo); if (!catTouched) setCat(s.cat); if (!expr) setExpr(String(s.amount)); }}>${s.memo}</button>`)}</div>`}
+      ${type === 'out' && html`<div class="row-chips">${PAY.map((p) => html`<button key=${p} class=${'chip small' + (pay === p ? ' on' : '')} onClick=${() => setPay(pay === p ? '' : p)}>${p}</button>`)}</div>`}
       ${editing && html`<div class="entry-foot"><button class="text-btn danger" onClick=${() => del(close)}>この記録を消す</button></div>`}
-      <${Keypad} expr=${expr} setExpr=${setExpr} onDone=${() => doSave(close)} doneLabel=${editing ? '直す' : '記録'} accent=${accent} />
+      <div class="ktool">
+        ${!editing ? html`<label class="cont"><input type="checkbox" checked=${cont} onChange=${(e) => setCont(e.target.checked)} /> 続けて入力${count ? `(${count})` : ''}</label>` : html`<span></span>`}
+        <button class="tax" onClick=${() => amount && setExpr(String(Math.round(amount * 1.08)))}>税込8%</button>
+        <button class="tax" onClick=${() => amount && setExpr(String(Math.round(amount * 1.1)))}>税込10%</button>
+      </div>
+      <${Keypad} expr=${expr} setExpr=${setExpr} onDone=${() => doSave(close)} doneLabel=${editing ? '直す' : '完了'} accent=${accent} />
     </div>`}
   </${Sheet}>`;
 }

@@ -2,7 +2,7 @@
 // 決めごと: クラウドが空でも端末のデータを消さない / 古い時刻の書き込みで新しい中身を上書きしない / 消すのは「消した印」だけ
 import { rpc, getKey, lsGet, lsSet } from './api.js';
 
-const DB_NAME = 'kakeibo';
+const DB_NAME = (typeof window !== 'undefined' && window.__KB_DB) || 'kakeibo'; // 確認用ページだけ別の名前にする
 let dbp = null;
 function openDb() {
   if (dbp) return dbp;

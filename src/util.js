@@ -97,69 +97,74 @@ export const GROUPS = {
   care: { name: '健康・美容', color: 'var(--c-care)' },
   other: { name: 'その他', color: 'var(--c-other)' },
 };
+// MoneyNote(シンプル家計簿)と同じ名前・色。色はカテゴリごとに固定(並べ替えても変わらない)
 export const OUT_CATS = [
-  { id: '食費', icon: '🍙', g: 'food' },
-  { id: '外食', icon: '🍜', g: 'food' },
-  { id: 'カフェ', icon: '☕', g: 'food' },
-  { id: 'コンビニ', icon: '🏪', g: 'food' },
-  { id: '日用品', icon: '🧻', g: 'life' },
-  { id: '衣服', icon: '👕', g: 'life' },
-  { id: '住まい', icon: '🏠', g: 'fixed' },
-  { id: '水道光熱', icon: '💡', g: 'fixed' },
-  { id: '通信', icon: '📶', g: 'fixed' },
-  { id: 'サブスク', icon: '📱', g: 'fixed' },
-  { id: '習い事', icon: '🎤', g: 'grow' },
-  { id: '本・学び', icon: '📚', g: 'grow' },
-  { id: '就活', icon: '💼', g: 'grow' },
-  { id: '趣味', icon: '🎸', g: 'fun' },
-  { id: '交際', icon: '🍻', g: 'fun' },
-  { id: '旅行', icon: '✈️', g: 'fun' },
-  { id: '交通', icon: '🚃', g: 'move' },
-  { id: '美容', icon: '💇', g: 'care' },
-  { id: '医療', icon: '💊', g: 'care' },
-  { id: 'その他', icon: '📦', g: 'other' },
+  { id: '食費', icon: '🍙', g: 'food', color: '#ff8700' },
+  { id: '外食', icon: '🍽️', g: 'food', color: '#ffd500' },
+  { id: '日用品', icon: '🧴', g: 'life', color: '#00b547' },
+  { id: '衣服', icon: '👕', g: 'life', color: '#1638a7' },
+  { id: '美容', icon: '💄', g: 'care', color: '#ff54a8' },
+  { id: '医療費', icon: '💊', g: 'care', color: '#61e396' },
+  { id: '教育費', icon: '📚', g: 'grow', color: '#ff4950' },
+  { id: '光熱費', icon: '💡', g: 'fixed', color: '#09ceff' },
+  { id: '交通費', icon: '🚃', g: 'move', color: '#a9673c' },
+  { id: '遊び', icon: '🎮', g: 'fun', color: '#ff2d2d' },
+  { id: '甘え', icon: '🍰', g: 'fun', color: '#ffc94d' },
+  { id: '学食', icon: '🍱', g: 'food', color: '#ff7a59' },
+  { id: 'ゼミ', icon: '🎓', g: 'grow', color: '#7de3c8' },
+  { id: '引っ越し諸々', icon: '📦', g: 'other', color: '#e6c84d' },
+  { id: '住まい', icon: '🏠', g: 'fixed', color: '#6250d6' },
+  { id: '通信', icon: '📶', g: 'fixed', color: '#7b6df0' },
+  { id: 'サブスク', icon: '📱', g: 'fixed', color: '#9085e9' },
+  { id: '習い事', icon: '🎤', g: 'grow', color: '#1baf7a' },
+  { id: 'その他', icon: '🔖', g: 'other', color: '#007f86' },
 ];
 export const IN_CATS = [
-  { id: '給料', icon: '💴', g: 'in' },
-  { id: 'メルカリ', icon: '🛍️', g: 'in' },
-  { id: '臨時収入', icon: '🎁', g: 'in' },
-  { id: '仕送り', icon: '📮', g: 'in' },
-  { id: '配当・分配金', icon: '🌱', g: 'in' },
-  { id: 'その他収入', icon: '✨', g: 'in' },
+  { id: '給料', icon: '💴', g: 'in', color: '#4eb46a' },
+  { id: '賞与', icon: '🎁', g: 'in', color: '#ff2e00' },
+  { id: '仕送り', icon: '📮', g: 'in', color: '#ffb27f' },
+  { id: 'メルカリ', icon: '🛍️', g: 'in', color: '#00c7ff' },
+  { id: '臨時収入', icon: '✨', g: 'in', color: '#f98bbe' },
+  { id: '配当・分配金', icon: '🌱', g: 'in', color: '#42d2c1' },
+  { id: 'その他収入', icon: '💫', g: 'in', color: '#8e8e93' },
+];
+export const INV_CATS = [
+  { id: '投資', icon: '💹', g: 'inv', color: '#1b9a6c' },
+  { id: '積立', icon: '🌱', g: 'inv', color: '#1b9a6c' },
+  { id: '株', icon: '📈', g: 'inv', color: '#1b9a6c' },
+  { id: '投資信託', icon: '🧺', g: 'inv', color: '#1b9a6c' },
 ];
 // 自分で足したカテゴリ(conf.cats)も混ぜる
 export function catList(type, conf) {
   const extra = (conf?.cats || []).filter((c) => c.type === type && !c.hidden);
   const hidden = new Set((conf?.cats || []).filter((c) => c.hidden).map((c) => c.id));
-  return [...(type === 'in' ? IN_CATS : OUT_CATS).filter((c) => !hidden.has(c.id)), ...extra.map((c) => ({ id: c.id, icon: c.icon || '🔖', g: c.g || (type === 'in' ? 'in' : 'other') }))];
+  return [...(type === 'in' ? IN_CATS : type === 'inv' ? INV_CATS : OUT_CATS).filter((c) => !hidden.has(c.id)), ...extra.map((c) => ({ id: c.id, icon: c.icon || '🔖', g: c.g || (type === 'in' ? 'in' : 'other'), color: c.color }))];
 }
 export function catInfo(id, conf) {
-  const all = [...OUT_CATS, ...IN_CATS, ...(conf?.cats || [])];
+  const all = [...OUT_CATS, ...IN_CATS, ...INV_CATS, ...(conf?.cats || [])];
   const c = all.find((x) => x.id === id);
   if (!c) return { id, icon: '🔖', g: 'other', color: GROUPS.other.color };
   const g = c.g || 'other';
-  return { ...c, icon: c.icon || '🔖', g, color: g === 'in' ? 'var(--c-in)' : (GROUPS[g] || GROUPS.other).color };
+  return { ...c, icon: c.icon || '🔖', g, color: c.color || (g === 'in' ? 'var(--c-in)' : (GROUPS[g] || GROUPS.other).color) };
 }
-// 収入より支出のほうに入れるべき言葉から、カテゴリを推し量る(過去の記録が無いとき用)
+// 言葉から、カテゴリを推し量る(過去の記録が無いとき用)
 const HINTS = [
   [/ボイトレ|レッスン|スクール|教室|ジム/, '習い事'],
   [/netflix|spotify|youtube|prime|アマプラ|apple ?music|icloud|chatgpt|claude|サブスク|hulu|disney|u-next/i, 'サブスク'],
-  [/水道|電気|ガス|光熱/, '水道光熱'],
+  [/水道|電気|ガス|光熱/, '光熱費'],
   [/家賃|管理費/, '住まい'],
   [/携帯|スマホ代|wifi|wi-fi|通信|ahamo|povo|楽天モバイル|linemo/i, '通信'],
-  [/セブン|ローソン|ファミマ|ファミリーマート|コンビニ|ミニストップ/, 'コンビニ'],
-  [/スタバ|スターバックス|ドトール|タリーズ|カフェ|コーヒー|コメダ/, 'カフェ'],
+  [/セブン|ローソン|ファミマ|ファミリーマート|コンビニ|ミニストップ|スタバ|スターバックス|ドトール|タリーズ|カフェ|コーヒー|コメダ/, '食費'],
   [/ランチ|ディナー|ラーメン|居酒屋|マック|マクドナルド|すき家|松屋|吉野家|サイゼ|外食|焼肉|寿司|定食/, '外食'],
+  [/学食/, '学食'],
   [/スーパー|イオン|西友|ライフ|まいばすけっと|業務スーパー|オーケー|食材|野菜/, '食費'],
-  [/電車|バス|suica|pasmo|タクシー|交通|定期券|新幹線/i, '交通'],
+  [/電車|バス|suica|pasmo|タクシー|交通|定期券|新幹線|駐輪/i, '交通費'],
   [/ユニクロ|gu|zara|服|靴/i, '衣服'],
   [/ドラッグ|マツキヨ|ウエルシア|ダイソー|無印|日用品|洗剤|ティッシュ/, '日用品'],
-  [/病院|薬|クリニック|歯医者/, '医療'],
+  [/病院|薬|クリニック|歯医者/, '医療費'],
   [/美容院|ヘア|ネイル|コスメ|化粧/, '美容'],
-  [/本|書店|参考書|kindle|紀伊國屋|丸善|ジュンク/i, '本・学び'],
-  [/飲み会|プレゼント|誕生日|お祝い/, '交際'],
-  [/ホテル|旅館|旅行|航空|ana|jal/i, '旅行'],
-  [/面接|スーツ|説明会|就活/, '就活'],
+  [/本|書店|参考書|kindle|紀伊國屋|丸善|ジュンク|授業|プリント/i, '教育費'],
+  [/飲み会|プレゼント|誕生日|お祝い|ホテル|旅館|旅行|航空|ライブ|カラオケ|ゲーム/, '遊び'],
   [/メルカリ/, 'メルカリ'],
   [/給料|給与|バイト代/, '給料'],
 ];
