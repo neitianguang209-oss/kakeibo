@@ -14,7 +14,7 @@ const TYPES = [
 
 const lastCatOf = (type) => lsGet('kakeibo:lastcat:' + type) || null;
 
-export function EntrySheet({ tx, preset = {}, onClose }) {
+export function EntrySheet({ tx, preset = {}, onClose, page = false }) {
   const app = useApp();
   const conf = getConf();
   const editing = !!tx;
@@ -41,7 +41,7 @@ export function EntrySheet({ tx, preset = {}, onClose }) {
   }, [all]);
   const baseCats = type === 'inv' ? INV_CATS : catList(type, conf);
   const cats = [...baseCats].map((c, i) => ({ ...c, i })).sort((a, b) => (usage.get(b.id) || 0) - (usage.get(a.id) || 0) || a.i - b.i);
-  const LIMIT = 8;
+  const LIMIT = page ? 13 : 8;
   const shownCats = moreCats || cats.length <= LIMIT + 1 ? cats : (() => { const top = cats.slice(0, LIMIT); if (cat && !top.some((c) => c.id === cat)) top[LIMIT - 1] = cats.find((c) => c.id === cat); return top; })();
   const sugg = useMemo(() => memoSuggest(all, null, type), [all, type]);
   const amount = evalExpr(expr);
@@ -73,12 +73,13 @@ export function EntrySheet({ tx, preset = {}, onClose }) {
     await S.save('tx', rec);
     if (cat) lsSet('kakeibo:lastcat:' + type, cat);
     vibrate(12);
-    if (cont && !editing) {
+    if ((cont || page) && !editing) {
       setCount((c) => c + 1);
       setExpr('');
       setMemo('');
       setCatTouched(false);
-      app.toast(`${useCat} ${yen(amount)} を記録しました`);
+      setShowHist(false);
+      app.toast(`${catInfo(useCat, conf).icon} ${useCat} ${yen(amount)} を記録`, () => S.remove(id));
       return;
     }
     close();
@@ -91,39 +92,51 @@ export function EntrySheet({ tx, preset = {}, onClose }) {
   };
   const accent = TYPES.find((t) => t.v === type).color;
 
-  if (showReceipt) return html`<${ReceiptSheet} onClose=${() => setShowReceipt(false)} onDone=${onClose} />`;
+  if (showReceipt) return html`<${ReceiptSheet} onClose=${() => setShowReceipt(false)} onDone=${page ? () => setShowReceipt(false) : onClose} />`;
 
-  return html`<${Sheet} title=${editing ? '記録を直す' : '記録する'} onClose=${onClose} full
-    right=${!editing && html`<button class="chip-btn" onClick=${() => setShowReceipt(true)}>📷 レシート</button>`}
-    foot=${(close) => html`<button class="btn primary wide big reg" style=${{ background: accent, borderColor: accent }} onClick=${() => doSave(close)}>${editing ? '直して保存する' : (type === 'in' ? '収入' : type === 'inv' ? '投資' : '支出') + 'を入力する'}</button>`}>
-    ${(close) => html`<div class="entry">
+  const regLabel = editing ? '直して保存する' : (type === 'in' ? '収入' : type === 'inv' ? '投資' : '支出') + 'を記録する';
+  const top = html`
       <${Seg} value=${type} onChange=${setType} options=${TYPES} />
       <div class="frow"><span class="fl">日付</span>
         <button class="dn" onClick=${() => setDate(addDays(date, -1))} aria-label="前の日">‹</button>
-        <label class="dpill"><b>${date.slice(0, 4)}年${+date.slice(5, 7)}月${+date.slice(8)}日(${mdw(date).slice(-2, -1)})</b><input ref=${dateRef} type="date" value=${date} onChange=${(e) => e.target.value && setDate(e.target.value)} class="hidden-date" /></label>
-        <button class="dn" onClick=${() => setDate(addDays(date, 1))} aria-label="次の日">›</button></div>
-      <div class="frow"><span class="fl">メモ</span><input class="memo" placeholder="未入力" value=${memo} onChange=${(e) => setMemo(e.target.value)} onInput=${(e) => setMemo(e.target.value)} maxLength="60" /><button class=${'hist-btn' + (showHist ? ' on' : '')} onClick=${() => setShowHist(!showHist)} aria-label="メモの履歴">履歴</button></div>
+        <label class="dpill"><b>${+date.slice(5, 7)}月${+date.slice(8)}日(${mdw(date).slice(-2, -1)})</b>${date !== today() && html`<small>${date.slice(0, 4)}年</small>`}<input ref=${dateRef} type="date" value=${date} onChange=${(e) => e.target.value && setDate(e.target.value)} class="hidden-date" /></label>
+        <button class="dn" onClick=${() => setDate(addDays(date, 1))} aria-label="次の日">›</button>
+        ${date !== today() && html`<button class="today-btn" onClick=${() => setDate(today())}>今日</button>`}</div>
+      <div class="frow"><span class="fl">メモ</span><input class="memo" placeholder="未入力" value=${memo} onChange=${(e) => setMemo(e.target.value)} maxLength="60" /><button class=${'hist-btn' + (showHist ? ' on' : '')} onClick=${() => setShowHist(!showHist)} aria-label="メモの履歴">履歴</button></div>
       ${showHist && html`<div class="memo-hist">${memoShown.length ? memoShown.map((m) => html`<button key=${m.memo} class="chip ghost small" onClick=${() => { setMemo(m.memo); if (!catTouched && cats.some((c) => c.id === m.cat)) setCat(m.cat); if (!expr) setExpr(String(m.amount)); setShowHist(false); }}>${m.memo}</button>`) : html`<small class="muted">まだ履歴がありません</small>`}</div>`}
-      <div class="frow amt" style=${{ '--ac': accent }}><span class="fl">${type === 'in' ? '収入' : type === 'inv' ? '投資' : '支出'}</span>
+      <div class="frow amt" style=${{ '--ac': accent }}><span class="fl">金額</span>
         <div class="afield"><b class="num">${amount ? amount.toLocaleString('ja-JP') : '0'}</b>${/[+\-×÷]/.test(expr) && html`<small class="expr">${expr}</small>`}</div><span class="fu">円</span></div>
       ${tx?.pending && html`<div class="note warn">仮の金額で入っています。明細を見て、金額を直して保存してください。</div>`}
-      <div class="fl2">カテゴリー</div>
       <div class="cat-grid">
         ${shownCats.map((c) => {
           const ci = catInfo(c.id, conf);
           return html`<button key=${c.id} class=${'cat' + (cat === c.id ? ' on' : '')} style=${{ '--cc': ci.color }} onClick=${() => { vibrate(5); setCat(c.id); setCatTouched(true); }}>
             <span class="ci">${c.icon}</span><span class="cn">${c.id}</span></button>`;
         })}
-        <button class="cat more" onClick=${() => { onClose(); app.open('cats'); }}><span class="ci">⚙</span><span class="cn">編集・追加</span></button>
         ${shownCats.length < cats.length && html`<button class="cat more" onClick=${() => setMoreCats(true)}><span class="ci">⋯</span><span class="cn">ほか${cats.length - shownCats.length}つ</span></button>`}
-      </div>
-      ${editing && html`<div class="entry-foot"><button class="text-btn danger" onClick=${() => del(close)}>この記録を消す</button></div>`}
-      <div class="ktool">
-        ${!editing ? html`<label class="cont"><input type="checkbox" checked=${cont} onChange=${(e) => setCont(e.target.checked)} /> 続けて入力${count ? `(${count})` : ''}</label>` : html`<span></span>`}
-        ${type === 'out' && html`<select class="paysel" value=${pay} onChange=${(e) => setPay(e.target.value)} aria-label="払い方"><option value="">払い方</option>${PAY.map((p) => html`<option key=${p} value=${p}>${p}</option>`)}</select>`}
+        <button class="cat more" onClick=${() => { if (!page) onClose(); app.open('cats'); }}><span class="ci">✎</span><span class="cn">編集</span></button>
+      </div>`;
+  const tools = html`<div class="ktool">
+        ${type === 'out' ? html`<select class="paysel" value=${pay} onChange=${(e) => setPay(e.target.value)} aria-label="払い方"><option value="">払い方</option>${PAY.map((p) => html`<option key=${p} value=${p}>${p}</option>`)}</select>` : html`<span></span>`}
         <button class="tax" onClick=${() => amount && setExpr(String(Math.round(amount * 1.08)))}>税込8%</button>
         <button class="tax" onClick=${() => amount && setExpr(String(Math.round(amount * 1.1)))}>税込10%</button>
-      </div>
+      </div>`;
+  const reg = (close) => html`<button class="btn primary wide big reg" style=${{ background: accent, borderColor: accent }} onClick=${() => doSave(close)}>${regLabel}</button>`;
+
+  if (page) return html`<div class="entry-page">
+    <header class="bar"><span class="bar-l"></span><h1>記録する</h1><button class="chip-btn" onClick=${() => setShowReceipt(true)}>📷 レシート</button></header>
+    <div class="ep-mid entry">${top}</div>
+    <div class="ep-bot">${tools}<${Keypad} expr=${expr} setExpr=${setExpr} />${reg(() => {})}</div>
+  </div>`;
+
+  return html`<${Sheet} title=${editing ? '記録を直す' : '記録する'} onClose=${onClose} full
+    right=${!editing && html`<button class="chip-btn" onClick=${() => setShowReceipt(true)}>📷 レシート</button>`}
+    foot=${(close) => reg(close)}>
+    ${(close) => html`<div class="entry">
+      ${top}
+      ${editing && html`<div class="entry-foot"><button class="text-btn danger" onClick=${() => del(close)}>この記録を消す</button></div>`}
+      ${!editing && html`<label class="cont"><input type="checkbox" checked=${cont} onChange=${(e) => setCont(e.target.checked)} /> 続けて入力${count ? `(${count})` : ''}</label>`}
+      ${tools}
       <${Keypad} expr=${expr} setExpr=${setExpr} />
     </div>`}
   </${Sheet}>`;

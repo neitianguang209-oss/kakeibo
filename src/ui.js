@@ -29,27 +29,9 @@ export function Sheet({ title, onClose, children, full, foot, right }) {
       document.body.classList.remove('noscroll');
     };
   }, []);
-  // 下へ引いて閉じる
-  const drag = useRef(null);
-  const box = useRef(null);
-  const onDown = (e) => { drag.current = { y: e.clientY, dy: 0 }; };
-  const onMove = (e) => {
-    if (!drag.current) return;
-    const dy = Math.max(0, e.clientY - drag.current.y);
-    drag.current.dy = dy;
-    if (box.current) box.current.style.transform = `translateY(${dy}px)`;
-  };
-  const onUp = () => {
-    if (!drag.current) return;
-    const dy = drag.current.dy;
-    drag.current = null;
-    if (dy > 90) close();
-    else if (box.current) box.current.style.transform = '';
-  };
   return html`<div class=${'sheet-wrap' + (closing ? ' closing' : '')} onClick=${(e) => e.target === e.currentTarget && close()}>
-    <div ref=${box} class=${'sheet' + (full ? ' full' : '')} role="dialog" aria-label=${title}>
-      <div class="sheet-head" onPointerDown=${onDown} onPointerMove=${onMove} onPointerUp=${onUp} onPointerCancel=${onUp}>
-        <div class="grab"></div>
+    <div class=${'sheet' + (full ? ' full' : '')} role="dialog" aria-label=${title}>
+      <div class="sheet-head">
         <div class="sheet-title"><button class="icon-btn" onClick=${close} aria-label="閉じる">✕</button><h2>${title}</h2><div class="sheet-right">${right}</div></div>
       </div>
       <div class="sheet-body">${typeof children === 'function' ? children(close) : children}</div>

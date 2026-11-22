@@ -6,7 +6,7 @@ import { txs, getConf, monthlyOf, cashAt, upcoming } from './calc.js';
 import * as S from './store.js';
 import { getKey, setKey, lsSet, lsGet } from './api.js';
 
-export const VERSION = '1.2.0';
+export const VERSION = '1.3.0';
 
 // テーマ(色合い)。収入=青・支出=朱などの「意味のある色」は、どのテーマでも変えない
 export const SKINS = [

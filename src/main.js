@@ -17,7 +17,7 @@ import { vibrate } from './util.js';
 takeKeyFromUrl();
 applySkin(lsGet('kakeibo:skin') || 'orange');
 
-const route = () => location.hash.replace(/^#\/?/, '') || 'records';
+const route = () => location.hash.replace(/^#\/?/, '') || 'input';
 
 // 下のタブの絵(線画)
 const ICONS = {
@@ -33,7 +33,7 @@ function App() {
   useStore();
   const [r, setR] = useState(route());
   const [qv, setQv] = useState(0);
-  const [sheet, setSheet] = useState(() => (location.hash.replace(/^#\/?/, '') ? null : { kind: 'entry' })); // {kind, arg, preset} ひらいたときは入力画面から
+  const [sheet, setSheet] = useState(null); // {kind, arg, preset}
   const [toasts, setToasts] = useState([]);
   useEffect(() => {
     const f = () => { setR(route()); window.scrollTo(0, 0); };
@@ -59,7 +59,8 @@ function App() {
 
   const [page, arg] = r.split('/');
   let body;
-  if (page === 'records') body = html`<${Records} />`;
+  if (page === 'input') body = html`<${EntrySheet} page />`;
+  else if (page === 'records') body = html`<${Records} />`;
   else if (page === 'report') body = html`<${Report} key=${arg || 'month'} start=${arg} />`;
   else if (page === 'budget') body = html`<${Budget} />`;
   else if (page === 'assets') body = html`<${Assets} qv=${qv} />`;
@@ -67,7 +68,7 @@ function App() {
   else if (page === 'settings') body = html`<${Settings} />`;
   else if (page === 'recs') body = html`<${Recs} />`;
   else body = html`<${Records} />`;
-  const tab = ['records', 'report', 'budget', 'settings'].includes(page) ? page : ['stock', 'assets', 'recs'].includes(page) ? 'settings' : 'records';
+  const tab = ['input', 'records', 'report', 'budget', 'settings'].includes(page) ? page : ['stock', 'assets', 'recs'].includes(page) ? 'settings' : 'records';
 
   const sh = sheet;
   const sheets = {
@@ -86,10 +87,9 @@ function App() {
   };
 
   return html`<${AppCtx.Provider} value=${app}>
-    <main class="main">${body}</main>
+    <main class=${'main' + (page === 'input' || !page ? ' is-input' : '')}>${body}</main>
     <nav class="tabbar" aria-label="画面の切りかえ">
-      <button class=${sheet?.kind === 'entry' ? 'on' : ''} onClick=${() => { vibrate(10); app.edit(null); }}><${Icon} k="input" /><span>入力</span></button>
-      ${[['records', 'カレンダー'], ['report', 'レポート'], ['budget', '予算'], ['settings', 'メニュー']].map(([k, l]) => html`<a key=${k} href=${'#/' + k} class=${tab === k ? 'on' : ''}><${Icon} k=${k === 'settings' ? 'more' : k} /><span>${l}</span></a>`)}
+      ${[['input', '入力'], ['records', 'カレンダー'], ['report', 'レポート'], ['budget', '予算'], ['settings', 'メニュー']].map(([k, l]) => html`<a key=${k} href=${'#/' + k} class=${tab === k ? 'on' : ''}><${Icon} k=${k === 'settings' ? 'more' : k} /><span>${l}</span></a>`)}
     </nav>
     ${S.sync.state === 'err' && getKey() && html`<div class="sync-err" onClick=${() => S.pull()}>同期できませんでした(${S.sync.msg})・押してやり直す</div>`}
     ${sh && sheets[sh.kind] && sheets[sh.kind]()}
