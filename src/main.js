@@ -33,7 +33,7 @@ function App() {
   useStore();
   const [r, setR] = useState(route());
   const [qv, setQv] = useState(0);
-  const [sheet, setSheet] = useState(null); // {kind, arg, preset}
+  const [sheet, setSheet] = useState(() => (location.hash.replace(/^#\/?/, '') ? null : { kind: 'entry' })); // {kind, arg, preset} ひらいたときは入力画面から
   const [toasts, setToasts] = useState([]);
   useEffect(() => {
     const f = () => { setR(route()); window.scrollTo(0, 0); };

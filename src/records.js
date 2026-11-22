@@ -1,5 +1,5 @@
 // カレンダー: 月の選択・収入/支出/合計・月曜はじまりのカレンダー・日ごとの一覧(MoneyNote と同じ並び)
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { html, useApp, Empty } from './ui.js';
 import { TxRow } from './home.js';
 import { yen, today, periodKeyOf, addMonths, parseD, addDays, groupBy, sum, fold, mdw, catList, md } from './util.js';
@@ -48,7 +48,18 @@ export function Records() {
     const f = fold(q);
     return list.filter((t) => (!cat || t.cat === cat) && (!f || fold(`${t.memo} ${t.cat} ${t.amount}`).includes(f))).slice(0, 300);
   }, [q, cat, list.length]);
-  const shown = searching ? found : sel ? byDay.get(sel) || [] : s.list;
+  const shown = searching ? found : s.list;
+  const dlistRef = useRef(null);
+  // 日付を押すと、下の一覧のその日へ移る
+  const pickDay = (d) => {
+    const next = sel === d ? null : d;
+    setSel(next);
+    if (!next) return;
+    requestAnimationFrame(() => {
+      const el = dlistRef.current?.querySelector(`[data-day="${next}"]`) || dlistRef.current;
+      el && el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
   const grouped = [...groupBy(shown, (t) => t.date)];
 
   // 予算(あと使える額)
@@ -81,7 +92,7 @@ export function Records() {
           const fut = d > t0;
           const plan = upBy.get(d);
           const dow = (parseD(d).getDay() + 6) % 7;
-          return html`<button key=${d} class=${'cd' + (d === t0 ? ' today' : '') + (sel === d ? ' sel' : '') + (fut ? ' fut' : '')} onClick=${() => setSel(sel === d ? null : d)}>
+          return html`<button key=${d} class=${'cd' + (d === t0 ? ' today' : '') + (sel === d ? ' sel' : '') + (fut ? ' fut' : '')} onClick=${() => pickDay(d)}>
             <span class=${'cdn' + (dow === 6 ? ' sun' : dow === 5 ? ' sat' : '')}>${+d.slice(8)}</span>
             ${inc > 0 && html`<span class="cdi num">${inc.toLocaleString('ja-JP')}円</span>`}
             ${o > 0 && html`<span class="cdo num">${o.toLocaleString('ja-JP')}円</span>`}
@@ -93,8 +104,8 @@ export function Records() {
     </div>`}
     ${sel && !searching && html`<div class="sel-bar"><b>${mdw(sel)}</b><span>支出 ${yen(outOf(sel))}</span><button class="chip" onClick=${() => app.edit(null, { date: sel })}>＋ この日に記録</button><button class="icon-btn" onClick=${() => setSel(null)}>✕</button></div>`}
     ${sel && !searching && (upBy.get(sel) || []).map((u, i) => html`<div key=${i} class="row plan"><span class="ri">🗓️</span><span class="rm"><span class="rt">${u.rec?.name || u.plan?.name + ' 積立'}</span><small>予定</small></span><b class="num">${yen(u.amount)}</b></div>`)}
-    <div class="dlist">
-      ${grouped.length ? grouped.map(([d, l]) => html`<div key=${d} class="day-group">
+    <div class="dlist" ref=${dlistRef}>
+      ${grouped.length ? grouped.map(([d, l]) => html`<div key=${d} data-day=${d} class=${'day-group' + (sel === d && !searching ? ' picked' : '')}>
         <div class="day-h"><span>${d.slice(0, 4)}年${md(d).replace('/', '月')}日(${mdw(d).slice(-2, -1)})</span><span class="num">${sum(l.filter((x) => x.type === 'out'), (x) => x.amount) ? yen(sum(l.filter((x) => x.type === 'out'), (x) => x.amount)) : ''}</span></div>
         ${l.map((t) => html`<${TxRow} key=${t.id} t=${t} conf=${conf} showDate=${false} />`)}
       </div>`) : html`<${Empty} icon="🗒️" title=${searching ? '見つかりませんでした' : 'この月の記録はまだありません'} body=${searching ? '' : '下の「入力」から記録できます'} />`}

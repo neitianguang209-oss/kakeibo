@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { html, Sheet, Seg, Keypad, evalExpr, useApp } from './ui.js';
 import * as S from './store.js';
-import { fn, getKey } from './api.js';
+import { fn, getKey, lsGet, lsSet } from './api.js';
 import { catList, catInfo, guessCat, INV_CATS, today, addDays, yen, uid, jpDay, mdw, PAY, fold, vibrate } from './util.js';
 import { txs, memoHistory, memoSuggest, getConf } from './calc.js';
 
@@ -12,21 +12,24 @@ const TYPES = [
   { v: 'inv', label: '投資へ', color: 'var(--c-inv)' },
 ];
 
+const lastCatOf = (type) => lsGet('kakeibo:lastcat:' + type) || null;
+
 export function EntrySheet({ tx, preset = {}, onClose }) {
   const app = useApp();
   const conf = getConf();
   const editing = !!tx;
   const [type, setType] = useState(tx?.type || preset.type || 'out');
   const [expr, setExpr] = useState(tx ? String(tx.amount) : preset.amount ? String(preset.amount) : '');
-  const [cat, setCat] = useState(tx?.cat || preset.cat || null);
+  const [cat, setCat] = useState(tx?.cat || preset.cat || lastCatOf(tx?.type || preset.type || 'out'));
   const [catTouched, setCatTouched] = useState(!!tx?.cat);
+  const [showHist, setShowHist] = useState(false);
   const [date, setDate] = useState(tx?.date || preset.date || today());
   const [memo, setMemo] = useState(tx?.memo || '');
   const [pay, setPay] = useState(tx?.pay || '');
   const [cont, setCont] = useState(false);
   const [count, setCount] = useState(0);
   const [showReceipt, setShowReceipt] = useState(false);
-  const all = useMemo(() => txs(), []);
+  const all = useMemo(() => txs(), [S.getVersion()]);
   const hist = useMemo(() => memoHistory(all), [all]);
   const [moreCats, setMoreCats] = useState(false);
   // よく使うカテゴリを前に(ここ90日の回数)
@@ -38,7 +41,7 @@ export function EntrySheet({ tx, preset = {}, onClose }) {
   }, [all]);
   const baseCats = type === 'inv' ? INV_CATS : catList(type, conf);
   const cats = [...baseCats].map((c, i) => ({ ...c, i })).sort((a, b) => (usage.get(b.id) || 0) - (usage.get(a.id) || 0) || a.i - b.i);
-  const LIMIT = 9;
+  const LIMIT = 8;
   const shownCats = moreCats || cats.length <= LIMIT + 1 ? cats : (() => { const top = cats.slice(0, LIMIT); if (cat && !top.some((c) => c.id === cat)) top[LIMIT - 1] = cats.find((c) => c.id === cat); return top; })();
   const sugg = useMemo(() => memoSuggest(all, null, type), [all, type]);
   const amount = evalExpr(expr);
@@ -51,8 +54,15 @@ export function EntrySheet({ tx, preset = {}, onClose }) {
     }
   }, [memo]);
   useEffect(() => {
-    if (!cats.some((c) => c.id === cat)) setCat(null);
+    if (!cats.some((c) => c.id === cat)) { const l = lastCatOf(type); setCat(l && cats.some((c) => c.id === l) ? l : null); }
   }, [type]);
+  // 過去のメモ(新しい順・同じものは1つ)。開いたときだけ出す
+  const memoList = useMemo(() => {
+    const seen = new Set(), out = [];
+    for (const t of all) { if (!t.memo || t.type !== type || t.rec || seen.has(t.memo)) continue; seen.add(t.memo); out.push({ memo: t.memo, cat: t.cat, amount: t.amount }); if (out.length >= 80) break; }
+    return out;
+  }, [all, type]);
+  const memoShown = memo ? memoList.filter((m) => fold(m.memo).includes(fold(memo))).slice(0, 12) : memoList.slice(0, 12);
 
   const doSave = async (close) => {
     if (!amount) return app.toast('金額を入れてください');
@@ -61,6 +71,7 @@ export function EntrySheet({ tx, preset = {}, onClose }) {
     const rec = { ...(tx || {}), id, type, amount: Math.abs(amount), cat: useCat, date, memo: memo.trim(), pay, t: tx?.t || Date.now(), src: tx?.src || 'manual' };
     delete rec.pending;
     await S.save('tx', rec);
+    if (cat) lsSet('kakeibo:lastcat:' + type, cat);
     vibrate(12);
     if (cont && !editing) {
       setCount((c) => c + 1);
@@ -91,11 +102,11 @@ export function EntrySheet({ tx, preset = {}, onClose }) {
         <button class="dn" onClick=${() => setDate(addDays(date, -1))} aria-label="前の日">‹</button>
         <label class="dpill"><b>${date.slice(0, 4)}年${+date.slice(5, 7)}月${+date.slice(8)}日(${mdw(date).slice(-2, -1)})</b><input ref=${dateRef} type="date" value=${date} onChange=${(e) => e.target.value && setDate(e.target.value)} class="hidden-date" /></label>
         <button class="dn" onClick=${() => setDate(addDays(date, 1))} aria-label="次の日">›</button></div>
-      <div class="frow"><span class="fl">メモ</span><input class="memo" placeholder="未入力" value=${memo} onChange=${(e) => setMemo(e.target.value)} maxLength="60" /></div>
+      <div class="frow"><span class="fl">メモ</span><input class="memo" placeholder="未入力" value=${memo} onChange=${(e) => setMemo(e.target.value)} onInput=${(e) => setMemo(e.target.value)} maxLength="60" /><button class=${'hist-btn' + (showHist ? ' on' : '')} onClick=${() => setShowHist(!showHist)} aria-label="メモの履歴">履歴</button></div>
+      ${showHist && html`<div class="memo-hist">${memoShown.length ? memoShown.map((m) => html`<button key=${m.memo} class="chip ghost small" onClick=${() => { setMemo(m.memo); if (!catTouched && cats.some((c) => c.id === m.cat)) setCat(m.cat); if (!expr) setExpr(String(m.amount)); setShowHist(false); }}>${m.memo}</button>`) : html`<small class="muted">まだ履歴がありません</small>`}</div>`}
       <div class="frow amt" style=${{ '--ac': accent }}><span class="fl">${type === 'in' ? '収入' : type === 'inv' ? '投資' : '支出'}</span>
         <div class="afield"><b class="num">${amount ? amount.toLocaleString('ja-JP') : '0'}</b>${/[+\-×÷]/.test(expr) && html`<small class="expr">${expr}</small>`}</div><span class="fu">円</span></div>
       ${tx?.pending && html`<div class="note warn">仮の金額で入っています。明細を見て、金額を直して保存してください。</div>`}
-      ${!memo && sugg.length > 0 && html`<div class="row-chips sugg">${sugg.map((s) => html`<button key=${s.memo} class="chip ghost small" onClick=${() => { setMemo(s.memo); if (!catTouched) setCat(s.cat); if (!expr) setExpr(String(s.amount)); }}>${s.memo}</button>`)}</div>`}
       <div class="fl2">カテゴリー</div>
       <div class="cat-grid">
         ${shownCats.map((c) => {
@@ -103,6 +114,7 @@ export function EntrySheet({ tx, preset = {}, onClose }) {
           return html`<button key=${c.id} class=${'cat' + (cat === c.id ? ' on' : '')} style=${{ '--cc': ci.color }} onClick=${() => { vibrate(5); setCat(c.id); setCatTouched(true); }}>
             <span class="ci">${c.icon}</span><span class="cn">${c.id}</span></button>`;
         })}
+        <button class="cat more" onClick=${() => { onClose(); app.open('cats'); }}><span class="ci">⚙</span><span class="cn">編集・追加</span></button>
         ${shownCats.length < cats.length && html`<button class="cat more" onClick=${() => setMoreCats(true)}><span class="ci">⋯</span><span class="cn">ほか${cats.length - shownCats.length}つ</span></button>`}
       </div>
       ${editing && html`<div class="entry-foot"><button class="text-btn danger" onClick=${() => del(close)}>この記録を消す</button></div>`}

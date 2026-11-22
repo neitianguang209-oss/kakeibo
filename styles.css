@@ -649,3 +649,27 @@ details summary { cursor: pointer; padding: 6px 0; }
 .ktool .paysel { width: auto; flex: none; min-height: 32px; padding: 3px 24px 3px 8px; font-size: 12px; border-radius: 8px; border: 1px solid var(--line); background-color: var(--card); max-width: 96px; }
 .ktool { gap: 6px; }
 .cat-grid .cat { padding: 3px 1px; }
+
+/* v1.2: 入力の記録ボタン・メモ履歴・レポートの見やすさ・カレンダーの日 */
+.sheet-foot .reg { min-height: 64px; font-size: 19px; font-weight: 800; border-radius: 18px; box-shadow: 0 4px 14px rgba(0,0,0,.18); }
+.hist-btn { flex: none; font-size: 12.5px; font-weight: 700; padding: 6px 12px; border-radius: 999px; background: var(--hover); color: var(--ink2); }
+.hist-btn.on { background: var(--accent-soft); color: var(--accent); }
+.memo-hist { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 2px 8px; max-height: 72px; overflow-y: auto; }
+.day-group.picked > .day-h { background: var(--accent-soft) !important; color: var(--accent) !important; }
+.dlist .day-group { scroll-margin-top: 8px; }
+.rhero { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 14px 16px 12px; margin: 10px 0 6px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+.rh-top { display: flex; align-items: baseline; justify-content: space-between; }
+.rh-top span { font-size: 13px; color: var(--ink3); font-weight: 700; }
+.rh-top b { font-size: 30px; font-weight: 800; }
+.rh-two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.rh-two > div { border-radius: 12px; padding: 8px 12px; display: flex; flex-direction: column; gap: 2px; }
+.rh-two .out { background: color-mix(in srgb, var(--out) 10%, transparent); }
+.rh-two .in { background: color-mix(in srgb, var(--inc) 10%, transparent); }
+.rh-two span { font-size: 11.5px; color: var(--ink3); font-weight: 700; }
+.rh-two b { font-size: 18px; font-weight: 800; }
+.rhero small { display: block; margin-top: 8px; font-size: 11.5px; color: var(--ink3); }
+.share { display: block; height: 5px; border-radius: 3px; background: var(--hover); margin: 5px 0 2px; overflow: hidden; }
+.share i { display: block; height: 100%; border-radius: 3px; }
+.report .card { border-radius: 18px; padding: 14px 14px 12px; }
+.report .card-h h3 { font-size: 15px; }
+.table-mini .tm-r:nth-child(even) { background: var(--hover); border-radius: 8px; }

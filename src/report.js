@@ -81,8 +81,12 @@ export function Report({ start }) {
     ${isM && html`<${MonthPill} s=${s} onPrev=${() => { setKey(addMonths(key, -1)); setPicked(null); }} onNext=${() => { setKey(addMonths(key, 1)); setPicked(null); }} onToday=${() => setKey(periodKeyOf(today(), conf.startDay))} />`}
     ${view === 'year' && html`<div class="mpill"><button class="mp-b" onClick=${() => setYr(yr - 1)} aria-label="前の年">‹</button><button class="mp-c" onClick=${() => setYr(+curKey.slice(0, 4))}><b>${yr}年</b><small>(1月〜12月)</small></button><button class="mp-b" onClick=${() => setYr(yr + 1)} aria-label="次の年">›</button></div>`}
     ${view === 'all' && html`<div class="mpill"><div class="mp-c"><b>全期間</b><small>(${+firstKey.slice(0, 4)}年${+firstKey.slice(5)}月〜いま)</small></div></div>`}
-    <div class="box2"><div><span>支出</span><b class="num out">${yen(s.out)}</b></div><div><span>収入</span><b class="num in">${yen(s.in)}</b></div></div>
-    <div class="box1"><span>収支</span><b class=${'num ' + (s.in - s.out >= 0 ? 'in' : 'out')}>${yen(s.in - s.out, true)}</b>${s.inv > 0 && html`<small>投資へ ${yen(s.inv)}</small>`}${!isM && html`<small>1か月あたり 支出 ${yen(Math.round(s.out / activeMonths))}・収入 ${yen(Math.round(s.in / activeMonths))}${bestMonth && bestMonth.out > 0 ? `・いちばん使った月 ${monthLabel(bestMonth.key)}(${yen(bestMonth.out)})` : ''}</small>`}</div>
+    <section class="rhero">
+      <div class="rh-top"><span>収支</span><b class=${'num ' + (s.in - s.out >= 0 ? 'in' : 'out')}>${yen(s.in - s.out, true)}</b></div>
+      <div class="rh-two"><div class="out"><span>支出</span><b class="num out">${yen(s.out)}</b></div><div class="in"><span>収入</span><b class="num in">${yen(s.in)}</b></div></div>
+      ${s.inv > 0 && html`<small>投資へ ${yen(s.inv)}(支出にはふくめていません)</small>`}
+      ${!isM && html`<small>1か月あたり 支出 ${yen(Math.round(s.out / activeMonths))}・収入 ${yen(Math.round(s.in / activeMonths))}${bestMonth && bestMonth.out > 0 ? `・いちばん使った月 ${monthLabel(bestMonth.key)}(${yen(bestMonth.out)})` : ''}</small>`}
+    </section>
     <div class="utabs" role="tablist"><button role="tab" aria-selected=${mode === 'out'} class=${mode === 'out' ? 'on' : ''} onClick=${() => { setMode('out'); setPicked(null); }}>支出</button><button role="tab" aria-selected=${mode === 'in'} class=${mode === 'in' ? 'on in' : ''} onClick=${() => { setMode('in'); setPicked(null); }}>収入</button></div>
     <section class="card">
       ${rows.length ? html`<div class="donut-wrap"><${Donut} data=${donut} center=${yen(tot)} sub=${mode === 'out' ? '支出' : '収入'} picked=${picked} onPick=${setPicked} /></div>
@@ -95,7 +99,7 @@ export function Report({ start }) {
             return html`<button key=${r.cat} class=${'cat-row' + (picked === r.cat ? ' on' : '')} onClick=${() => setPicked(picked === r.cat ? null : r.cat)}>
               <span class="ri" style=${{ '--cc': c.color }}>${c.icon}</span>
               <span class="cr-main"><span class="cr-top"><b>${r.cat}</b><small>${r.n}回</small><span class="num">${yen(r.amount)}</span><em>${Math.round((r.amount / (tot || 1)) * 100)}%</em></span>
-                ${b ? html`<${Meter} value=${r.amount} max=${b} color=${c.color} />` : null}
+                ${b ? html`<${Meter} value=${r.amount} max=${b} color=${c.color} />` : html`<span class="share"><i style=${{ width: Math.max(2, Math.round((r.amount / (tot || 1)) * 100)) + '%', background: c.color }}></i></span>`}
                 ${diff != null && Math.abs(diff) >= 0.15 && html`<small class=${diff > 0 ? 'up' : 'down'}>3か月平均より ${pct(diff, 0)}(平均 ${yen(avg)})</small>`}
                 ${b ? html`<small>予算 ${yen(b)} ${r.amount > b ? `・${yen(r.amount - b)} オーバー` : `・あと ${yen(b - r.amount)}`}</small>` : null}
               </span></button>`;
