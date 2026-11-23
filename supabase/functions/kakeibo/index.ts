@@ -1,7 +1,8 @@
 // 家計簿アプリ(kakeibo)の Edge Function。合言葉(x-kb-key)で守る。
-//  quote   : 株・指数(Yahoo Finance)と投資信託(三菱UFJアセットの公開データ / Yahoo!ファイナンス)の値段と推移
-//  search  : 銘柄をさがす(コード・会社名)
-//  receipt : レシートの写真を Gemini が読んで、店・日付・合計・カテゴリを返す(キーは あさよみ と共用)
+//  quote    : 株・指数(Yahoo Finance)と投資信託(三菱UFJアセットの公開データ / Yahoo!ファイナンス)の値段と推移
+//  earnings : 決算発表日(日本株は Yahoo!ファイナンス、米国株は Nasdaq)
+//  search   : 銘柄をさがす(コード・会社名)
+//  receipt  : レシートの写真を Gemini が読んで、店・日付・合計・カテゴリを返す(キーは あさよみ と共用)
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
@@ -163,6 +164,54 @@ async function quoteOne(sym: string, range: string) {
   }
 }
 
+// ---- 決算発表日(日本株: Yahoo!ファイナンスの決算発表スケジュール / 米国株: Nasdaq の公開データ)
+//  next: 次の決算発表日(会社の予定 or 前回から約3か月後の目安), est: 目安なら true, last: 前回の決算発表日
+const ymdJ = (y: string | number, m: string | number, d: string | number) => `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+const addD = (s: string, n: number) => new Date(Date.parse(s + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
+const todayJ = () => new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+function nextFromLast(last: string | null) {
+  if (!last) return null;
+  let n = addD(last, 91);
+  while (n < todayJ()) n = addD(n, 91);
+  return n;
+}
+async function earningsOne(sym: string) {
+  if (isFund(sym) || /^\^|=X$/.test(sym)) return null;
+  const k = 'earn:' + sym;
+  const c = await cacheGet(k, 12 * 3600e3);
+  if (c) return c;
+  let out: { next: string | null; est: boolean; last: string | null; note?: string } = { next: null, est: true, last: null };
+  try {
+    if (/\.T$/.test(sym)) {
+      const h = await (await get(`https://finance.yahoo.co.jp/quote/${encodeURIComponent(sym)}`, 10000)).text();
+      const blk = h.match(/pressReleaseSchedule\\":\{([^}]*)\}/)?.[1] || '';
+      const msg = (blk.match(/pressReleaseScheduleMessage\\":\\"([^\\]*)/)?.[1] || '');
+      const dm = msg.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+      const pd = blk.match(/pressReleaseDate\\":\\"(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})/);
+      const announced = /resultsAnnounced/.test(blk) || /でした/.test(msg);
+      if (pd) out = { next: ymdJ(pd[1], pd[2], pd[3]), est: false, last: null };
+      else if (dm && !announced) out = { next: ymdJ(dm[1], dm[2], dm[3]), est: false, last: null };
+      else if (dm) { const last = ymdJ(dm[1], dm[2], dm[3]); out = { next: nextFromLast(last), est: true, last }; }
+      out.note = msg.replace(/\\u[0-9a-f]{4}/g, '');
+    } else {
+      const H = { 'User-Agent': UA, Accept: 'application/json' };
+      // deno-lint-ignore no-explicit-any
+      const a: any = await (await fetch(`https://api.nasdaq.com/api/analyst/${encodeURIComponent(sym)}/earnings-date`, { headers: H, signal: AbortSignal.timeout(10000) })).json().catch(() => null);
+      const t = String(a?.data?.reportText || '');
+      const m = t.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+      // deno-lint-ignore no-explicit-any
+      const s: any = await (await fetch(`https://api.nasdaq.com/api/company/${encodeURIComponent(sym)}/earnings-surprise`, { headers: H, signal: AbortSignal.timeout(10000) })).json().catch(() => null);
+      const rows = s?.data?.earningsSurpriseTable?.rows || [];
+      const lm = String(rows[0]?.dateReported || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      const last = lm ? ymdJ(lm[3], lm[1], lm[2]) : null;
+      if (m && ymdJ(m[3], m[1], m[2]) >= todayJ()) out = { next: ymdJ(m[3], m[1], m[2]), est: false, last };
+      else out = { next: nextFromLast(last), est: true, last };
+    }
+  } catch { /* 取れないときは空 */ }
+  await cachePut(k, out);
+  return out;
+}
+
 // ---- 銘柄さがし
 async function search(q: string) {
   q = q.trim().normalize('NFKC');
@@ -258,6 +307,11 @@ Deno.serve(async (req) => {
       const syms: string[] = (Array.isArray(b.symbols) ? b.symbols : []).map(String).filter(Boolean).slice(0, 30);
       const range = String(b.range || '1y');
       const vals = await Promise.all(syms.map((s) => quoteOne(s, range)));
+      return json(Object.fromEntries(syms.map((s, i) => [s, vals[i]])));
+    }
+    if (b.action === 'earnings') {
+      const syms: string[] = (Array.isArray(b.symbols) ? b.symbols : []).map(String).filter(Boolean).slice(0, 30);
+      const vals = await Promise.all(syms.map((s) => earningsOne(s)));
       return json(Object.fromEntries(syms.map((s, i) => [s, vals[i]])));
     }
     if (b.action === 'search') return json({ results: await search(String(b.q || '')) });

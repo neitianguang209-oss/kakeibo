@@ -75,3 +75,28 @@ export const PRESET_SEMI = [
   { symbol: 'NVDA', name: 'エヌビディア' },
   { symbol: 'TSM', name: 'TSMC(ADR)' },
 ];
+
+// ---- 決算発表日(半日ごとに取り直す)。{ sym: { next, est, last, _at } }
+const LE = 'kakeibo:earnings';
+let earn = null;
+export function getEarnings() {
+  if (!earn) earn = lsJson(LE, {});
+  return earn;
+}
+let earnBusy = null;
+export async function loadEarnings(symbols, force = false) {
+  const e = getEarnings();
+  if (!getKey()) return e;
+  const need = [...new Set(symbols)].filter((s) => s && !/^\^|=X$/.test(s) && !/^[0-9A-Z]{8}$/.test(s) && (force || !e[s] || Date.now() - (e[s]._at || 0) > 12 * 3600e3));
+  if (!need.length || earnBusy) return e;
+  earnBusy = fn('earnings', { symbols: need }, 40000)
+    .then((r) => {
+      for (const [s, v] of Object.entries(r || {})) if (!v?.error) e[s] = { next: null, ...(v || {}), _at: Date.now() };
+      try { lsSet(LE, JSON.stringify(e)); } catch { /* いっぱい */ }
+      emit();
+    })
+    .catch(() => {})
+    .finally(() => { earnBusy = null; });
+  await earnBusy;
+  return e;
+}

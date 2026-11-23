@@ -78,7 +78,7 @@ function App() {
     lot: () => html`<${LotSheet} lot=${sh.arg} onClose=${close} />`,
     plan: () => html`<${PlanSheet} plan=${sh.arg} onClose=${close} />`,
     planbase: () => html`<${PlanBaseSheet} plan=${sh.arg} onClose=${close} />`,
-    watch: () => html`<${WatchSheet} onClose=${close} />`,
+    watch: () => html`<${WatchSheet} item=${sh.arg} onClose=${close} />`,
     cash: () => html`<${CashSheet} onClose=${close} />`,
     rec: () => html`<${RecSheet} rec=${sh.arg} onClose=${close} />`,
     goal: () => html`<${GoalSheet} onClose=${close} />`,

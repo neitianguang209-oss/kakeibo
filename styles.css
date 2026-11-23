@@ -706,3 +706,26 @@ details summary { cursor: pointer; padding: 6px 0; }
   .ep-bot .keypad { grid-auto-rows: 40px; }
   .entry-page .ktool { margin: 2px 0 0; }
 }
+
+/* v1.4: 資産の内訳・決算の予定・買いたい株 */
+.stack { display: flex; height: 12px; border-radius: 6px; overflow: hidden; margin: 6px 0 8px; background: var(--hover); }
+.stack i { display: block; height: 100%; }
+.bd-row { display: flex; align-items: center; gap: 8px; padding: 6px 2px; font-size: 13.5px; border-top: 1px solid var(--line); }
+.bd-row:first-of-type { border-top: 0; }
+.bd-row span { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bd-row span i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.bd-row em { width: 3em; text-align: right; font-style: normal; color: var(--ink3); font-size: 12px; }
+.earn-row .rm small { color: var(--ink3); }
+.earn-row b { font-size: 13px; font-weight: 700; }
+.earn-row.soon b { color: var(--accent); }
+.side.want { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+.earn-tag { display: inline-block; font-style: normal; font-size: 10.5px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 6px; padding: 0 6px; margin: 1px 0; width: fit-content; }
+.watch-row .tg { color: var(--ink2); }
+.watch-row.hit { background: color-mix(in srgb, var(--up) 8%, transparent); border-radius: 12px; }
+.watch-row.hit .tg { color: var(--up); font-weight: 700; }
+.earn-line { font-size: 12.5px; color: var(--accent); font-weight: 700; margin-bottom: 4px; }
+.note .text-btn { display: block; margin-top: 4px; padding-left: 0; }
+.earn-row .ev { display: flex; flex-direction: column; align-items: flex-end; flex: none; }
+.earn-row .ev b { font-size: 14px; }
+.earn-row .ev small { font-size: 11px; color: var(--ink3); }
+.earn-row.soon .ev small { color: var(--accent); font-weight: 700; }
