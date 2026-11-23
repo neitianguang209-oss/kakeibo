@@ -106,6 +106,8 @@ export function Assets({ qv }) {
 
     <${Breakdown} cash=${cash} open=${open} inv=${inv} list=${list} />
 
+    <${NisaCard} q=${q} open=${open} />
+
     <${EarningsCard} open=${open} />
 
     <${GoalCard} total=${(cash || 0) + inv} list=${list} conf=${conf} />
@@ -259,7 +261,7 @@ function Breakdown({ cash, open, inv, list }) {
   const [by, setBy] = useState('name');
   const total = (cash || 0) + inv;
   // 家計簿の「投資へ」のうち、株・投信の登録とつながっていない分
-  const loose = sum(list.filter((t) => t.type === 'inv' && t.src !== 'lot' && t.src !== 'plan' && !String(t.id).startsWith('l_')), (t) => t.amount);
+  const loose = sum(list.filter((t) => t.type === 'inv' && !['lot', 'plan', 'moneynote', 'import'].includes(t.src) && !String(t.id).startsWith('l_')), (t) => t.amount);
   if (!total && !loose) return null;
   let parts;
   if (by === 'name') {
@@ -278,6 +280,37 @@ function Breakdown({ cash, open, inv, list }) {
     ${parts.map((x) => html`<div key=${x.k} class="bd-row"><span><i style=${{ background: x.color }}></i>${x.label}</span><b class="num">${yen(x.v)}</b><em>${Math.round((x.v / total) * 100)}%</em></div>`)}`}
     ${!open.length && html`<p class="muted small">株・投信をまだ登録していません。「＋ 買った」から、証券口座で持っているものを1つずつ入れると、ここに割合が出ます。</p>`}
     ${loose > 0 && html`<div class="note">家計簿で「投資へ」と記録した ${yen(loose)} は、まだ株・投信として登録されていません(何を買ったかが分からないため、資産の評価額には入っていません)。<button class="text-btn" onClick=${() => app.open('lot')}>持っている株・投信を登録する ›</button></div>`}
+  </section>`;
+}
+
+// ---- NISAの枠(今年どれだけ使ったか)。つみたて投資枠は年120万円、成長投資枠は年240万円、生涯1800万円
+function NisaCard({ q, open }) {
+  const year = String(new Date().getFullYear());
+  const fx = q['JPY=X']?.cur || 150;
+  let tsumi = 0, growth = 0;
+  for (const l of S.all('lot')) {
+    if (l.side === 'sell' || !String(l.date).startsWith(year) || !/NISA/.test(l.acct || '')) continue;
+    const amt = (+l.qty * +l.price * (l.currency === 'USD' ? +l.fx || fx : 1)) / unitOf(l.symbol) + (+l.fee || 0);
+    if (/つみたて/.test(l.acct)) tsumi += amt; else growth += amt;
+  }
+  let planLeft = 0;
+  for (const pl of S.all('plan')) {
+    if (!/NISA/.test(pl.acct || '')) continue;
+    const buys = planBuys(pl, q[pl.symbol]).filter((b) => b.date.startsWith(year) && !(pl.base?.date && b.date <= pl.base.date));
+    const used = sum(buys, (b) => b.amount);
+    if (/つみたて/.test(pl.acct)) tsumi += used; else growth += used;
+    if (pl.active !== false && !pl.stopFrom) planLeft += Math.max(0, 12 - +today().slice(5, 7) + (+today().slice(8) < (pl.day === 'end' ? 28 : +pl.day) ? 1 : 0)) * (+pl.amount || 0) * (/つみたて/.test(pl.acct) ? 1 : 0);
+  }
+  const life = sum(open.filter((p) => p.accts.some((a) => /NISA/.test(a)) || /NISA/.test(p.plan?.acct || '')), (p) => p.cost || 0);
+  if (!tsumi && !growth && !life) return null;
+  const bar = (used, max, color) => html`<div class="nisa-bar"><div class="meter"><i style=${{ width: Math.min(100, (used / max) * 100) + '%', background: color }}></i></div><div class="nb-foot"><span>使った ${yen(used)}</span><span>残り ${yen(Math.max(0, max - used))}</span></div></div>`;
+  return html`<section class="card">
+    <div class="card-h"><h3>🌿 NISAの枠(${year}年)</h3></div>
+    <div class="nisa-l"><b>つみたて投資枠</b><small>年120万円</small></div>${bar(tsumi, 1200000, 'var(--c-inv)')}
+    ${planLeft > 0 && html`<small class="muted">この年の残りの積立予定 約${yen(planLeft)}(積立日までに入る分)</small>`}
+    <div class="nisa-l"><b>成長投資枠</b><small>年240万円</small></div>${bar(growth, 2400000, 'var(--accent)')}
+    <div class="nisa-l"><b>生涯の枠(目安)</b><small>1,800万円</small></div>${bar(life, 18000000, 'var(--ink3)')}
+    <p class="fine">年の枠は、その年に買った金額で数えます(売っても、その年の枠は戻りません)。生涯の枠は、いま持っているNISAの買った値段の合計(目安)です。</p>
   </section>`;
 }
 
