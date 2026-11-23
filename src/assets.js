@@ -520,7 +520,7 @@ export function LotSheet({ lot, onClose }) {
   const save = async (close) => {
     if (!sym || !effQty || !effPrice) return app.toast('銘柄・数・値段を入れてください');
     const id = lot?.id || uid('l');
-    const rec = { id, symbol: sym.symbol, name: sym.name || qd?.name || sym.symbol, side, date, qty: Math.round(effQty * 1000) / 1000, price: effPrice, acct, fee: +fee || 0, currency: usd ? 'USD' : 'JPY', fx: usd ? fx : undefined, cashTx: cash ? `l_${id}` : null };
+    const rec = { id, t: lot?.t || Date.now(), symbol: sym.symbol, name: sym.name || qd?.name || sym.symbol, side, date, qty: Math.round(effQty * 1000) / 1000, price: effPrice, acct, fee: +fee || 0, currency: usd ? 'USD' : 'JPY', fx: usd ? fx : undefined, cashTx: cash ? `l_${id}` : null };
     await S.save('lot', rec);
     if (cash) await S.save('tx', { id: `l_${id}`, type: 'inv', amount: Math.round(side === 'sell' ? -(total - 2 * (+fee || 0)) : total), cat: isFundSym(sym.symbol) ? '投資信託' : '株', date, memo: `${shortName(rec.name)} ${side === 'sell' ? '売った' : '買った'}`, src: 'lot', t: Date.now() });
     else if (lot?.cashTx) await S.remove(lot.cashTx);

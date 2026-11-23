@@ -166,7 +166,7 @@ export function positions(quotes, fx) {
     if (acct) p.accts.add(acct);
     return p;
   };
-  const lots = S.all('lot').sort((a, b) => (a.date < b.date ? -1 : 1));
+  const lots = S.all('lot').sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.t || 0) - (b.t || 0)));
   for (const l of lots) {
     const p = getPos(l.symbol, l.name, l.acct);
     const u = unitOf(l.symbol);
@@ -233,7 +233,7 @@ export function qtyAt(symbol, dateStr, quotes) {
 }
 export function costAt(symbol, dateStr, quotes, fx) {
   let cost = 0, qty = 0;
-  for (const l of S.all('lot').sort((a, b) => (a.date < b.date ? -1 : 1))) {
+  for (const l of S.all('lot').sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.t || 0) - (b.t || 0)))) {
     if (l.symbol !== symbol || l.date > dateStr) continue;
     const rate = l.currency === 'USD' ? +l.fx || fx || 150 : 1;
     if (l.side === 'sell') {
