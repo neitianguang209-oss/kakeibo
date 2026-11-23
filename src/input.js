@@ -299,7 +299,7 @@ function parseMoneyNote(text) {
     const name = catName.get(cid) || 'その他';
     let type = typ === '1' ? 'in' : 'out';
     let cat = name;
-    if (name === '投資') { type = 'inv'; cat = '投資'; } // 投資は支出に入れない
+    if (name === '投資') { type = 'out'; cat = '自己投資'; } // 前のアプリの「投資」は自己投資(カメラ・本など)。株の売買ではない
     else if (name === 'バイト' && type === 'out') cat = 'その他';
     out.push({ date: `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`, amount, cat, memo: (memo || '').replace(/\\n/g, ' ').trim().slice(0, 60), type, on: true });
   }

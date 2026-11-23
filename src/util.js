@@ -117,6 +117,7 @@ export const OUT_CATS = [
   { id: '通信', icon: '📶', g: 'fixed', color: '#7b6df0' },
   { id: 'サブスク', icon: '📱', g: 'fixed', color: '#9085e9' },
   { id: '習い事', icon: '🎤', g: 'grow', color: '#1baf7a' },
+  { id: '自己投資', icon: '🎯', g: 'grow', color: '#e0902a' },
   { id: 'その他', icon: '🔖', g: 'other', color: '#007f86' },
 ];
 export const IN_CATS = [
