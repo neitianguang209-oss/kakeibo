@@ -2,4 +2,5 @@
 -- kakeibo_items : 記録すべて(kind = tx 記録 / rec 固定費 / lot 売り買い / plan 積立 / watch / conf 設定)。anon から直接は触れない
 -- kakeibo_prices: 三菱UFJ以外の投信の基準価額を毎日ためる
 -- kakeibo_cache : 値段・名前の一時置き場
--- 入口は関数 kakeibo_api(合言葉, 'pull'|'push'|'prices', 中身)。合言葉は jibun_access と共通
+-- 入口は関数 kakeibo_api(合言葉, 'pull'|'push'|'prices'|'purge', 中身)。合言葉は jibun_access と共通
+-- purge(2026-11-27 kakeibo_api_purge): 「消した印」の行だけを before まで完全に削除する。固定費・積立の自動記録(r_ p_)は残す

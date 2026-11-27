@@ -101,6 +101,49 @@ export async function restore(id) {
   schedulePush();
 }
 
+// ---- 消した記録の完全削除
+// 固定費・積立の自動記録(r_ p_)の「消した印」は残す(消すと、同じ記録がまた作られるため)
+const isAuto = (id) => /^[rp]_/.test(id);
+export const purgeable = () => [...items.values()].filter((x) => x.deleted && !isAuto(x.id));
+async function idbDel(ids) {
+  if (!ids.length) return;
+  const db = await openDb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('items', 'readwrite');
+    const st = tx.objectStore('items');
+    for (const id of ids) st.delete(id);
+    tx.oncomplete = () => res();
+    tx.onerror = () => rej(tx.error);
+  });
+}
+// 消した時刻が until までの「消した印」を、この端末から取りのぞく
+async function dropDeleted(until, local = false) {
+  const t = Date.parse(until || '');
+  if (!t) return 0;
+  const ids = purgeable().filter((x) => (local || !x.dirty) && Date.parse(x.at) <= t).map((x) => x.id);
+  for (const id of ids) items.delete(id);
+  await idbDel(ids).catch(() => {});
+  if (ids.length) emit();
+  return ids.length;
+}
+export async function purge() {
+  if (getKey()) {
+    // まず最新の状態にそろえてから、クラウド → 端末の順に消す(クラウドで失敗したら端末も消さない)
+    await pull();
+    if (sync.state === 'err') throw new Error(sync.msg);
+    if ([...items.values()].some((x) => x.dirty)) await push();
+    if (sync.state === 'err') throw new Error(sync.msg);
+    const targets = purgeable();
+    if (!targets.length) return 0;
+    const until = new Date(Math.max(...targets.map((x) => Date.parse(x.at))) + 1).toISOString();
+    await rpc('purge', { before: until });
+    const n = await dropDeleted(until);
+    await setConf({ purgedAt: until }); // ほかの端末も、同期したときに同じ分を取りのぞく
+    return n;
+  }
+  return dropDeleted(new Date().toISOString(), true); // クラウドを使っていないときは、端末の分だけ
+}
+
 // ---- 設定(1件だけの記録)
 export function conf() {
   return getOne('conf') || {};
@@ -193,6 +236,7 @@ export function pull() {
       lsSet('kakeibo:lastSync', sync.last);
       setSync('ok');
       if (changed.length) emit();
+      await dropDeleted(conf().purgedAt);
     } catch (e) {
       setSync('err', e.message);
     } finally {

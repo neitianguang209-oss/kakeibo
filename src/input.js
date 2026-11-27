@@ -3,7 +3,8 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { html, Sheet, Seg, Keypad, evalExpr, useApp } from './ui.js';
 import * as S from './store.js';
 import { fn, getKey, lsGet, lsSet } from './api.js';
-import { catList, catInfo, guessCat, INV_CATS, today, addDays, yen, uid, mdw, fold, vibrate, periodKeyOf } from './util.js';
+import { catList, catInfo, guessCat, INV_CATS, today, addDays, yen, uid, mdw, fold, vibrate, periodKeyOf, PAY, subsOf } from './util.js';
+import { Totals } from './records.js';
 import { txs, memoHistory, getConf, summary } from './calc.js';
 import { ItemsSheet, ItemRows, cleanItems, itemsSum } from './items.js';
 import { Icon, CatIcon } from './icons.js';
@@ -16,6 +17,45 @@ const TYPES = [
 ];
 
 const lastCatOf = (type) => lsGet('kakeibo:lastcat:' + type) || null;
+// 支払い方法は前回のものを引き継ぐ(「選ばない」で記録したら、次も選ばないまま)
+const lastPay = () => {
+  const v = lsGet('kakeibo:lastpay');
+  if (v != null) return v;
+  const hit = txs().filter((t) => t.type === 'out' && PAY.includes(t.pay)).sort((a, b) => (b.t || 0) - (a.t || 0))[0];
+  return hit?.pay || '';
+};
+
+const PAY_SHORT = { 'QR・電子マネー': 'QR・電子', 口座引き落とし: '引き落とし' };
+
+// 細かい分類(使い道)の候補チップ。足す・外すもここで
+function SubPicker({ cat, value, onChange }) {
+  const conf = getConf();
+  const list = subsOf(cat, conf);
+  const [mode, setMode] = useState(null); // null | 'add' | 'edit'
+  const [v, setV] = useState('');
+  useEffect(() => { setMode(null); setV(''); }, [cat]);
+  const store = (next) => S.setConf({ subs: { ...(getConf().subs || {}), [cat]: next } });
+  const add = () => {
+    const n = v.trim().slice(0, 16);
+    if (n) {
+      if (!list.includes(n)) store([...list, n]);
+      onChange(n);
+    }
+    setV('');
+    setMode(null);
+  };
+  const shown = value && !list.includes(value) ? [...list, value] : list;
+  return html`<div class="pick-row"><span class="fl">分類</span><div class="pick-body">
+    <div class="row-chips wrap">
+      ${shown.map((x) => (mode === 'edit'
+        ? html`<button key=${x} class="chip small del" aria-label=${`${x}を候補から外す`} onClick=${() => { store(list.filter((y) => y !== x)); if (value === x) onChange(''); }}>${x} ✕</button>`
+        : html`<button key=${x} class=${'chip small' + (value === x ? ' on' : '')} aria-pressed=${value === x} onClick=${() => { vibrate(5); onChange(value === x ? '' : x); }}>${x}</button>`))}
+      ${mode !== 'edit' && html`<button class="chip small ghost" onClick=${() => setMode(mode === 'add' ? null : 'add')}>＋ 足す</button>`}
+      ${list.length > 0 && html`<button class="chip small ghost" onClick=${() => setMode(mode === 'edit' ? null : 'edit')}>${mode === 'edit' ? '終わる' : '編集'}</button>`}
+    </div>
+    ${mode === 'add' && html`<div class="inline"><input autoFocus value=${v} maxLength="16" placeholder=${`${cat}の分類(例: 差し入れ)`} onChange=${(e) => setV(e.target.value)} onKeyDown=${(e) => e.key === 'Enter' && add()} /><button class="btn small primary" onClick=${add}>足す</button></div>`}
+  </div></div>`;
+}
 
 export function EntrySheet({ tx, preset = {}, onClose, page = false }) {
   const app = useApp();
@@ -30,7 +70,16 @@ export function EntrySheet({ tx, preset = {}, onClose, page = false }) {
   const [date, setDate] = useState(init.date || today());
   const [memo, setMemo] = useState(init.memo || '');
   const moreOf = (x) => ({ store: x.store || '', pay: x.pay || '', note: x.note || '', tags: x.tags || [], photos: (x.photos || []).map((id) => ({ id })) });
-  const [more, setMore] = useState(() => moreOf(init));
+  const [more, setMore] = useState(() => moreOf(editing || init.pay ? init : { ...init, pay: lastPay() }));
+  const [subcat, setSubcat] = useState(init.sub || '');
+  const [kp, setKp] = useState(false); // テンキーは「金額」を押したときだけ
+  const midRef = useRef(null);
+  const kpRef = useRef(null);
+  useEffect(() => {
+    if (!kp) return;
+    if (page) midRef.current?.scrollTo({ top: 0 });
+    else setTimeout(() => kpRef.current?.scrollIntoView({ block: 'end' }), 30);
+  }, [kp]);
   const [cont, setCont] = useState(false);
   const [count, setCount] = useState(0);
   const [showReceipt, setShowReceipt] = useState(false);
@@ -72,16 +121,19 @@ export function EntrySheet({ tx, preset = {}, onClose, page = false }) {
     setCat(x.cat);
     setCatTouched(true);
     setMemo(x.memo || '');
-    setMore(moreOf(x));
+    setSubcat(x.sub || '');
+    setMore((m) => moreOf({ ...x, pay: x.pay || m.pay }));
     setItems(x.items || []);
   };
 
   const doSave = async (close) => {
-    if (!amount) return app.toast('金額を入れてください');
+    if (!amount) { setKp(true); return app.toast('金額を入れてください'); }
     const useCat = cat || (type === 'in' ? 'その他収入' : type === 'inv' ? 'その他投資' : 'その他');
     const id = tx?.id || uid('t');
     const rec = { ...(tx || {}), ...(preset.symbol ? { symbol: preset.symbol } : {}), id, type, amount: Math.abs(amount), cat: useCat, date, memo: memo.trim(), pay: type === 'out' ? more.pay : '', t: tx?.t || Date.now(), src: tx?.src || 'manual' };
     delete rec.pending;
+    if (type === 'out' && subcat) rec.sub = subcat;
+    else delete rec.sub;
     const its = type === 'out' ? cleanItems(items, useCat) : [];
     if (its.length) rec.items = its;
     else delete rec.items;
@@ -92,6 +144,7 @@ export function EntrySheet({ tx, preset = {}, onClose, page = false }) {
     }
     await S.save('tx', rec);
     if (cat) lsSet('kakeibo:lastcat:' + type, cat);
+    if (type === 'out' && !editing) lsSet('kakeibo:lastpay', more.pay);
     vibrate(12);
     const done = `${useCat} ${yen(amount)} を記録`;
     if ((cont || page) && !editing) {
@@ -99,8 +152,11 @@ export function EntrySheet({ tx, preset = {}, onClose, page = false }) {
       setExpr('');
       setMemo('');
       setItems([]);
-      setMore(moreOf({}));
+      setSubcat('');
+      setKp(false);
+      setMore((m) => moreOf({ pay: m.pay }));
       setCatTouched(false);
+      midRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
       app.toast(done, () => S.remove(id));
       return;
     }
@@ -126,26 +182,32 @@ export function EntrySheet({ tx, preset = {}, onClose, page = false }) {
         <label class="dpill"><b>${+date.slice(5, 7)}月${+date.slice(8)}日(${mdw(date).slice(-2, -1)})</b>${date.slice(0, 4) !== today().slice(0, 4) && html`<small>${date.slice(0, 4)}年</small>`}<input ref=${dateRef} type="date" value=${date} onChange=${(e) => e.target.value && setDate(e.target.value)} class="hidden-date" /></label>
         <button class="dn" onClick=${() => setDate(addDays(date, 1))} aria-label="次の日">›</button>
         ${date !== today() && html`<button class="today-btn" onClick=${() => setDate(today())}>今日</button>`}</div>
-      <div class="frow"><span class="fl">内容</span><input class="memo" placeholder="なくてもOK" value=${memo} onChange=${(e) => setMemo(e.target.value)} maxLength="60" />${!editing && html`<button class="hist-btn" onClick=${() => setSub('pick')}>前から</button>`}</div>
+      <div class="frow"><span class="fl">内容</span><input class="memo" placeholder="なくてもOK" value=${memo} onFocus=${() => setKp(false)} onChange=${(e) => setMemo(e.target.value)} maxLength="60" />${!editing && html`<button class="hist-btn" onClick=${() => setSub('pick')}>前から</button>`}</div>
       <div class="frow" style=${{ '--ac': accent }}><span class="fl">金額</span>
-        <div class="afield"><b class="num">${amount ? amount.toLocaleString('ja-JP') : '0'}</b>${/[+\-×÷]/.test(expr) && html`<small class="expr">${expr}</small>`}</div><span class="fu">円</span></div>
+        <button class=${'afield' + (kp ? ' on' : '')} aria-expanded=${kp} aria-label=${`金額 ${amount}円。押すとテンキー`} onClick=${() => { vibrate(5); document.activeElement?.blur?.(); setKp(!kp); }}><b class="num">${amount ? amount.toLocaleString('ja-JP') : '0'}</b>${/[+\-×÷]/.test(expr) && html`<small class="expr">${expr}</small>`}</button><span class="fu">円</span></div>
       ${tx?.pending && html`<div class="note warn">仮の金額で入っています。明細を見て、金額を直して保存してください。</div>`}
       <div class="cat-grid">
         ${shownCats.map((c) => {
           const ci = catInfo(c.id, conf);
-          return html`<button key=${c.id} class=${'cat' + (cat === c.id ? ' on' : '')} aria-pressed=${cat === c.id} style=${{ '--cc': type === 'inv' ? 'var(--c-inv)' : ci.color }} onClick=${() => { vibrate(5); setCat(c.id); setCatTouched(true); }}>
+          return html`<button key=${c.id} class=${'cat' + (cat === c.id ? ' on' : '')} aria-pressed=${cat === c.id} style=${{ '--cc': type === 'inv' ? 'var(--c-inv)' : ci.color }} onClick=${() => { vibrate(5); if (c.id !== cat) setSubcat(''); setCat(c.id); setCatTouched(true); }}>
             <${CatIcon} id=${c.id} conf=${conf} /><span class="cn">${c.id}</span></button>`;
         })}
         ${shownCats.length < cats.length
           ? html`<button class="cat more" onClick=${() => setMoreCats(true)}><${Icon} k="list" /><span class="cn">ほか${cats.length - shownCats.length}つ</span></button>`
           : type !== 'inv' && html`<button class="cat more" onClick=${() => { if (!page) onClose(); app.open('cats'); }}><${Icon} k="edit" /><span class="cn">編集</span></button>`}
-      </div>`;
-  const filled = [more.photos.length ? `写真${more.photos.length}` : '', more.store, type === 'out' ? more.pay : '', more.tags.join(' '), more.note ? 'メモ' : '', items.length ? `内訳${items.length}` : ''].filter(Boolean).join('・');
+      </div>
+      ${type === 'out' && cat && html`<${SubPicker} cat=${cat} value=${subcat} onChange=${setSubcat} />`}
+      ${type === 'out' && html`<div class="pick-row"><span class="fl">払い方</span><div class="pick-body"><div class="row-chips wrap">${[...PAY, ...(more.pay && !PAY.includes(more.pay) ? [more.pay] : [])].map((p) => html`<button key=${p} class=${'chip small' + (more.pay === p ? ' on' : '')} aria-pressed=${more.pay === p} onClick=${() => { vibrate(5); setMore((m) => ({ ...m, pay: m.pay === p ? '' : p })); }}>${PAY_SHORT[p] || p}</button>`)}</div></div></div>`}`;
+  const filled = [more.photos.length ? `写真${more.photos.length}` : '', more.store, more.tags.join(' '), more.note ? 'メモ' : '', items.length ? `内訳${items.length}` : ''].filter(Boolean).join('・');
   const tools = html`<div class="ktool">
         <button class="more-btn" onClick=${() => setSub('more')}><${Icon} k="plus" size="16" w="2.2" />詳しく${filled && html`<small>${filled}</small>`}</button>
+        ${kp && html`<${React.Fragment}>
         <button class="tax" onClick=${() => amount && setExpr(String(Math.round(amount * 1.08)))}>税込8%</button>
         <button class="tax" onClick=${() => amount && setExpr(String(Math.round(amount * 1.1)))}>税込10%</button>
+        <button class="tax kp-close" onClick=${() => { if (/[+\-×÷]/.test(expr)) setExpr(String(evalExpr(expr) || '')); setKp(false); }}>閉じる</button>
+        </${React.Fragment}>`}
       </div>`;
+  const pad = kp && html`<div ref=${kpRef}><${Keypad} expr=${expr} setExpr=${setExpr} /></div>`;
   const reg = (close) => html`<button class="btn primary wide reg" style=${{ background: accent }} onClick=${() => doSave(close)}>${regLabel}</button>`;
 
   const subs = html`<${React.Fragment}>
@@ -159,10 +221,10 @@ export function EntrySheet({ tx, preset = {}, onClose, page = false }) {
     const s = summary(all, key, conf);
     return html`<${React.Fragment}><div class="entry-page">
     <header class="bar"><span class="bar-l"></span>${seg}<button class="icon-btn" onClick=${() => setShowReceipt(true)} aria-label="レシートを読む"><${Icon} k="camera" /></button></header>
-    <div class="ep-mid entry">
-      <button class="glance" onClick=${() => app.go('records')}>${+key.slice(5)}月の支出<b class="num">${yen(s.out)}</b>${conf.budget > 0 ? html`<span>${conf.budget - s.out >= 0 ? `あと ${yen(conf.budget - s.out)}` : `予算を ${yen(s.out - conf.budget)} 超過`}</span>` : null}<span class="chev">›</span></button>
+    <div class="ep-mid entry" ref=${midRef}>
+      <${Totals} compact title="今月の合計" s=${s} onClick=${() => app.go('records')}>${conf.budget > 0 && html`<span class="tt-bud">${conf.budget - s.out >= 0 ? `予算まで あと ${yen(conf.budget - s.out)}` : `予算を ${yen(s.out - conf.budget)} 超過`}</span>`}</${Totals}>
       ${top}</div>
-    <div class="ep-bot">${tools}<${Keypad} expr=${expr} setExpr=${setExpr} />${reg(() => {})}</div>
+    <div class="ep-bot">${tools}${pad}${reg(() => {})}</div>
   </div>${subs}</${React.Fragment}>`;
   }
 
@@ -173,7 +235,7 @@ export function EntrySheet({ tx, preset = {}, onClose, page = false }) {
       ${seg}
       ${top}
       ${tools}
-      <${Keypad} expr=${expr} setExpr=${setExpr} />
+      ${pad}
       ${editing && html`<div class="entry-foot"><button class="text-btn danger" onClick=${() => del(close)}>この記録を消す</button></div>`}
       ${!editing && html`<label class="cont"><input type="checkbox" checked=${cont} onChange=${(e) => setCont(e.target.checked)} /> 続けて入力${count ? `(${count})` : ''}</label>`}
     </div>`}

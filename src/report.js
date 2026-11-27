@@ -4,10 +4,11 @@ import { html, useApp, Seg, Empty, PageHead } from './ui.js';
 import { Donut, Bars } from './charts.js';
 import { CatIcon } from './icons.js';
 import { TxRow } from './home.js';
-import { MonthPill, YearPill, Sum3 } from './records.js';
+import { MonthPill, YearPill, Totals, totalTitle } from './records.js';
 import { yen, pct, today, periodKeyOf, periodOf, addMonths, sum, catInfo, short, md, mdw, groupBy } from './util.js';
 import { txs, summary, getConf, insights, nextMonthPlan, monthLabel } from './calc.js';
 import * as S from './store.js';
+import { shortName } from './assets.js';
 
 const mergeCats = (arrs) => {
   const m = new Map();
@@ -20,6 +21,7 @@ const merge = (ss) => ({
   list: ss.flatMap((x) => x.list),
   out: sum(ss, (x) => x.out), in: sum(ss, (x) => x.in), inv: sum(ss, (x) => x.inv), fixed: sum(ss, (x) => x.fixed), variable: sum(ss, (x) => x.variable),
   byCat: mergeCats(ss.map((x) => x.byCat)), incByCat: mergeCats(ss.map((x) => x.incByCat)),
+  invRows: ss.flatMap((x) => x.invRows),
 });
 
 // 見ていた期間を覚えておく(カテゴリ画面から戻ってきたとき、同じ場所に戻る)
@@ -56,13 +58,17 @@ export function Report({ start }) {
   const tips = useMemo(() => insights(list, conf), [S.getVersion()]);
   const next = useMemo(() => nextMonthPlan(list, conf), [S.getVersion()]);
 
-  const rows = mode === 'out' ? s.byCat : s.incByCat;
-  const tot = mode === 'out' ? s.out : s.in;
-  const donut = rows.map((r) => ({ key: r.cat, label: r.cat, value: r.amount, color: catInfo(r.cat, conf).color, fmt: yen(r.amount) }));
+  // 投資は積立(銘柄)ごと
+  const invBy = [...groupBy(s.invRows, (x) => shortName(x.name))].map(([cat, l]) => ({ cat, amount: sum(l, (x) => x.amount), n: l.length })).sort((a, b) => b.amount - a.amount);
+  const rows = mode === 'out' ? s.byCat : mode === 'in' ? s.incByCat : invBy;
+  const tot = mode === 'out' ? s.out : mode === 'in' ? s.in : s.inv;
+  const word = mode === 'out' ? '支出' : mode === 'in' ? '収入' : '投資';
+  const colorOf = (r, i) => (mode === 'inv' ? ['var(--c-inv)', 'var(--s1)', 'var(--s4)', 'var(--s2)'][i % 4] : catInfo(r.cat, conf).color);
+  const donut = rows.map((r, i) => ({ key: r.cat, label: r.cat, value: r.amount, color: colorOf(r, i), fmt: yen(r.amount) }));
   const months = sums.filter((x) => x.out > 0 || x.in > 0).length || 1;
   const budget = conf.budget || 0;
   const itemN = s.list.filter((t) => t.items?.length).length;
-  const openCat = (cat) => app.go(['cat', mode, encodeURIComponent(cat), s.start, s.end].join('/'));
+  const openCat = (cat) => app.go(mode === 'inv' ? 'assets/port' : ['cat', mode, encodeURIComponent(cat), s.start, s.end].join('/'));
   const link = (label, to, value) => html`<button class="row" onClick=${() => app.go(to)}><span class="rm"><span class="rt">${label}</span></span>${value && html`<span class="rv"><em class="num">${value}</em></span>`}<span class="chev">›</span></button>`;
 
   return html`<div class="page report">
@@ -71,18 +77,17 @@ export function Report({ start }) {
     ${view === 'year' && html`<${YearPill} year=${yr} onChange=${(y) => set({ yr: y })} />`}
     ${view === 'all' && html`<div class="mpill"><div class="mp-c"><b>全期間</b><small>(${+firstKey.slice(0, 4)}年${+firstKey.slice(5)}月〜いま)</small></div></div>`}
 
-    <div class="box2"><div><span>支出</span><b class="num out">${yen(s.out)}</b></div><div><span>収入</span><b class="num in">${yen(s.in)}</b></div></div>
-    <div class="box1"><span>収支</span><b class=${'num ' + (s.in - s.out >= 0 ? 'in' : 'out')}>${yen(s.in - s.out, true)}</b></div>
+    <${Totals} title=${isM ? totalTitle(key, conf.startDay) : view === 'year' ? `${yr}年の合計` : '全期間の合計'} s=${s} />
     ${!isM && html`<div class="per-month">1か月あたり 支出 ${yen(s.out / months)}・収入 ${yen(s.in / months)}</div>`}
 
-    <div class="utabs" role="tablist">${[['out', '支出'], ['in', '収入']].map(([v, l]) => html`<button key=${v} role="tab" aria-selected=${mode === v} class=${mode === v ? 'on' : ''} onClick=${() => set({ mode: v })}>${l}</button>`)}</div>
+    <div class="utabs" role="tablist">${[['out', '支出'], ['in', '収入'], ['inv', '投資']].map(([v, l]) => html`<button key=${v} role="tab" aria-selected=${mode === v} class=${mode === v ? 'on' : ''} onClick=${() => set({ mode: v })}>${l}</button>`)}</div>
     ${rows.length ? html`
-      <div class="donut-wrap"><${Donut} data=${donut} size=${230} thick=${52} labels center=${yen(tot)} sub=${mode === 'out' ? '支出' : '収入'} picked=${picked} onPick=${setPicked} /></div>
-      <div class="sec flush">${rows.map((r) => html`<button key=${r.cat} class="row cat-row" onClick=${() => openCat(r.cat)}>
-        <span class="ri"><${CatIcon} id=${r.cat} conf=${conf} /></span>
-        <span class="rm"><span class="rt">${r.cat}</span></span>
+      <div class="donut-wrap"><${Donut} data=${donut} size=${230} thick=${52} labels center=${yen(tot)} sub=${word} picked=${picked} onPick=${setPicked} /></div>
+      <div class="sec flush">${rows.map((r, i) => html`<button key=${r.cat} class="row cat-row" onClick=${() => openCat(r.cat)}>
+        <span class="ri"><${CatIcon} id=${mode === 'inv' ? '積立' : r.cat} conf=${conf} /></span>
+        <span class="rm"><span class="rt">${r.cat}</span><span class="share"><i style=${{ width: `${(r.amount / (tot || 1)) * 100}%`, background: colorOf(r, i) }}></i></span></span>
         <span class="rv"><b class="num">${yen(r.amount)}</b><em class="num">${((r.amount / (tot || 1)) * 100).toFixed(1)}%</em></span><span class="chev">›</span></button>`)}</div>`
-      : html`<${Empty} title=${`この期間の${mode === 'out' ? '支出' : '収入'}はまだありません`} />`}
+      : html`<${Empty} title=${`この期間の${word}はまだありません`} />`}
 
     <h4 class="grp">もっとくわしく</h4>
     <div class="sec flush">
@@ -93,7 +98,7 @@ export function Report({ start }) {
       ${isM && link('見直しのヒント', 'tips', tips.length ? `${tips.length}件` : '')}
       ${isM && link(`${+next.key.slice(5)}月の見通し`, 'forecast', next.fixedOut + next.variable ? yen(next.fixedOut + next.variable) : '')}
     </div>
-    ${s.inv > 0 && html`<p class="fine">この期間に「投資へ」回した ${yen(s.inv)} は、支出にふくめていません。</p>`}
+    <p class="fine">投資は、積立日が来た分と、手で「投資へ」と記録した分の合計です。支出にはふくめず、収支は「収入 − 支出」です。</p>
     <div class="bottom-space"></div>
   </div>`;
 }
@@ -109,6 +114,10 @@ export function CatPage({ mode, cat, start, end }) {
   const keys = Array.from({ length: 6 }, (_, i) => addMonths(endKey, i - 5));
   const vals = keys.map((k) => { const p = periodOf(k, conf.startDay); return sum(list.filter((t) => of(t) && t.date >= p.start && t.date <= p.end), (t) => t.amount); });
   const [limit, setLimit] = useState(100);
+  const [pickSub, setPickSub] = useState(null);
+  const bySub = [...groupBy(rows, (t) => t.sub || '')].map(([k, l]) => ({ k, n: l.length, a: sum(l, (t) => t.amount) })).sort((a, b) => !a.k - !b.k || b.a - a.a);
+  const hasSub = bySub.some((x) => x.k);
+  const shown = pickSub == null ? rows : rows.filter((t) => (t.sub || '') === pickSub);
   const budget = mode === 'out' ? conf.catBudgets?.[cat] : 0;
   const oneMonth = (new Date(end) - new Date(start)) / 864e5 < 32;
   const prev = vals.slice(2, 5).filter((v) => v > 0);
@@ -125,10 +134,13 @@ export function CatPage({ mode, cat, start, end }) {
       <${Bars} labels=${keys.map((k) => +k.slice(5) + '月')} height=${150} fmt=${(v, full) => (full ? yen(v) : short(v))}
         series=${[{ key: 'v', label: cat, color: catInfo(cat, conf).color, values: vals }]} />
     </section>
-    <div class="dlist">${[...groupBy(rows.slice(0, limit), (t) => t.date)].map(([d, l]) => html`<div key=${d} class="day-group">
+    ${hasSub && html`<div class="sec flush">${bySub.map((x) => html`<button key=${x.k || 'none'} class=${'row sub-row' + (pickSub === x.k ? ' on' : '')} aria-pressed=${pickSub === x.k} onClick=${() => setPickSub(pickSub === x.k ? null : x.k)}>
+      <span class="rm"><span class="rt">${x.k || '分類なし'}</span><small>${x.n}件</small></span>
+      <span class="rv"><b class="num">${yen(x.a)}</b><em class="num">${((x.a / (total || 1)) * 100).toFixed(1)}%</em></span></button>`)}</div>`}
+    <div class="dlist">${[...groupBy(shown.slice(0, limit), (t) => t.date)].map(([d, l]) => html`<div key=${d} class="day-group">
       <div class="day-h"><span>${d.slice(0, 4)}年${md(d).replace('/', '月')}日(${mdw(d).slice(-2, -1)})</span></div>
       ${l.map((t) => html`<${TxRow} key=${t.id} t=${t} conf=${conf} />`)}</div>`)}</div>
-    ${rows.length > limit && html`<button class="text-btn" onClick=${() => setLimit(limit + 200)}>もっと見る(あと${rows.length - limit}件)</button>`}
+    ${shown.length > limit && html`<button class="text-btn" onClick=${() => setLimit(limit + 200)}>もっと見る(あと${shown.length - limit}件)</button>`}
     ${!rows.length && html`<${Empty} title="この期間の記録はありません" />`}
     <div class="bottom-space"></div>
   </div>`;
@@ -151,10 +163,10 @@ export function TrendPage() {
   return html`<div class="page trend">
     <${PageHead} title="月ごとの推移" />
     <${Seg} value=${span} onChange=${(v) => { setSpan(v); setPick(null); }} options=${[{ v: 6, label: '6か月' }, { v: 12, label: '1年' }, { v: 0, label: '年ごと' }]} />
-    <${Sum3} inc=${sum(ms, (x) => x.in)} out=${sum(ms, (x) => x.out)} />
+    <${Totals} title=${span ? `${span === 12 ? '1年' : '6か月'}の合計` : '全期間の合計'} s=${{ in: sum(ms, (x) => x.in), out: sum(ms, (x) => x.out), inv: sum(ms, (x) => x.inv) }} />
     <section class="card">
       <${Bars} labels=${cols.map(label)} fmt=${(v, full) => (full ? yen(v) : short(v))}
-        series=${[{ key: 'in', label: '収入', color: 'var(--inc)', values: cols.map((x) => x.in) }, { key: 'out', label: '支出', color: 'var(--out)', values: cols.map((x) => x.out) }, { key: 'inv', label: '投資へ', color: 'var(--c-inv)', values: cols.map((x) => x.inv) }]}
+        series=${[{ key: 'in', label: '収入', color: 'var(--inc)', values: cols.map((x) => x.in) }, { key: 'out', label: '支出', color: 'var(--out)', values: cols.map((x) => x.out) }, { key: 'inv', label: '投資', color: 'var(--c-inv)', values: cols.map((x) => x.inv) }]}
         picked=${pick} onPick=${(i) => setPick(pick === i ? null : i)} />
       <div class="table-mini">
         <div class="tm-h"><span></span><span>収入</span><span>支出</span><span>残せた</span></div>

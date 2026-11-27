@@ -10,7 +10,11 @@ export function TxRow({ t, conf, hl = '' }) {
   const f = fold(hl);
   const hit = f ? (t.items || []).find((x) => fold(`${x.n} ${x.tag || ''}`).includes(f)) : null;
   const memo = t.memo && t.memo !== t.cat ? t.memo : '';
-  const sub = hit ? `${hit.n} ${yen(hit.a)}` : memo || t.store || (t.type === 'adj' ? '残高あわせ' : '');
+  // 品目があれば「もやし・ちくわ ほか2点」のように、買ったものを見せる
+  const names = (t.items || []).map((x) => x.n).filter(Boolean);
+  const bought = names.length ? names.slice(0, 2).join('・') + (names.length > 2 ? ` ほか${names.length - 2}点` : '') : '';
+  const line = [t.sub, memo || bought || t.store].filter(Boolean).join('・');
+  const sub = hit ? `${hit.n} ${yen(hit.a)}` : line || (t.type === 'adj' ? '残高あわせ' : '');
   const tap = () => {
     if (t.type === 'adj') return;
     if (t.pending) app.edit(t);

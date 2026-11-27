@@ -2,8 +2,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { html, useApp, Seg, Empty, PageHead } from './ui.js';
 import { LineChart, Donut } from './charts.js';
-import { yen, pm, pct, tone, sum, short, groupBy } from './util.js';
-import { positions, holdingSeries } from './calc.js';
+import { yen, pm, pct, tone, sum, short, groupBy, md } from './util.js';
+import { positions, holdingSeries, upcoming } from './calc.js';
 import { getProfiles, loadProfiles } from './quotes.js';
 import { PosRow, PlanRow, shortName, acctSplit, quotesForCalc, refreshQuotes } from './assets.js';
 import * as S from './store.js';
@@ -39,12 +39,17 @@ export function Holdings({ pos, q }) {
     const mine = pos.filter((p) => p.kind === k);
     const open = mine.filter((p) => !p.closed);
     const T = totals(open);
+    const rows = open.map((p) => html`<${Row} key=${p.symbol} p=${p} q=${q} />`);
+    // 積立の毎月の額と、次の積立日
+    const plans = k === 'fund' ? S.all('plan').filter((p) => p.active !== false) : [];
+    const next = plans.length ? upcoming(35).find((u) => u.plan) : null;
     return html`<section key=${k} class="card">
       <button class="hold-head" onClick=${() => app.go('port/' + k)}>
         <span class="hold-top"><h3>${K.title}</h3><span class="chev">›</span></span>
         ${open.length > 0 && html`<span class="hold-val"><b class="num">${yen(T.value)}</b><span class=${'num ' + tone(T.pl)}>${pm(T.pl)}円 (${pct(T.rate)})</span></span>`}
       </button>
-      ${open.map((p) => html`<${Row} key=${p.symbol} p=${p} q=${q} />`)}
+      ${plans.length > 0 && html`<div class="plan-facts"><div><span>毎月の積立</span><b class="num">${yen(sum(plans, (p) => p.amount))}</b></div><div><span>投資した元本</span><b class="num">${yen(T.cost)}</b></div><div><span>次の積立日</span><b class="num">${next ? md(next.date) : '—'}</b></div></div>`}
+      ${k === 'stock' && open.length > 0 ? html`<details class="stock-fold"><summary>銘柄を見る(${open.length})</summary>${rows}</details>` : rows}
       ${!open.length && html`<p class="muted">${k === 'fund' ? 'オルカンなどの積立を登録すると、毎月の積立日に自動で口数を足して、投資した額と今の評価額を出します。' : '買った銘柄・日・株数・値段を入れると、今いくらになっているかと分散がわかります。'}</p>`}
       <${Closed} list=${mine.filter((p) => p.closed)} />
       <div class="hold-foot"><button class="text-btn" onClick=${() => app.open(K.add)}>${K.addLabel}</button></div>

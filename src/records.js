@@ -26,8 +26,21 @@ export function YearPill({ year, onChange }) {
     <button class="mp-b" onClick=${() => onChange(year + 1)} aria-label="次の年">›</button>
   </div>`;
 }
-export function Sum3({ inc, out }) {
-  return html`<div class="sum3"><div><span>収入</span><b class="num in">${yen(inc)}</b></div><div><span>支出</span><b class="num out">${yen(out)}</b></div><div><span>合計</span><b class=${'num ' + (inc - out >= 0 ? 'in' : 'out')}>${yen(inc - out, true)}</b></div></div>`;
+// どの画面でも同じ形の「今月の合計」: 支出・収入・投資、その下に収支(収入−支出)
+export const totalTitle = (key, startDay = 1) => (key === periodKeyOf(today(), startDay) ? '今月の合計' : `${+key.slice(5)}月の合計`);
+export function Totals({ title, s, compact, onClick, children }) {
+  const net = s.in - s.out;
+  const body = html`<${React.Fragment}>
+    <span class="tt-h"><span>${title}</span><span class="tt-net">収支<b class=${'num ' + (net >= 0 ? 'in' : 'out')}>${yen(net, true)}</b>${onClick && html`<span class="chev">›</span>`}</span></span>
+    <span class="tt-3">
+      <span><small>支出</small><b class="num out">${yen(s.out)}</b></span>
+      <span><small>収入</small><b class="num in">${yen(s.in)}</b></span>
+      <span><small>投資</small><b class="num inv">${yen(s.inv)}</b></span>
+    </span>
+    ${children}
+  </${React.Fragment}>`;
+  const cls = 'totals' + (compact ? ' compact' : '');
+  return onClick ? html`<button class=${cls} onClick=${onClick}>${body}</button>` : html`<div class=${cls}>${body}</div>`;
 }
 
 const dayHead = (d, l) => {
@@ -82,7 +95,7 @@ export function Records() {
   const found = useMemo(() => {
     if (!searching) return [];
     const f = fold(q);
-    return list.filter((t) => (!cat || t.cat === cat) && (!f || fold(`${t.memo} ${t.cat} ${t.amount} ${t.note || ''} ${(t.tags || []).join(' ')} ${itemText(t)}`).includes(f)));
+    return list.filter((t) => (!cat || t.cat === cat) && (!f || fold(`${t.memo} ${t.sub || ''} ${t.cat} ${t.amount} ${t.note || ''} ${(t.tags || []).join(' ')} ${itemText(t)}`).includes(f)));
   }, [q, cat, S.getVersion()]);
   const dlistRef = useRef(null);
   // 日付を押すと、下の一覧のその日へ移る
@@ -120,8 +133,8 @@ export function Records() {
         <div class="dlist"><${DayList} list=${found.slice(0, 300)} conf=${conf} hl=${q.trim()} /></div>` : html`<${Empty} title="言葉かカテゴリでさがせます" />`}`
     : view === 'month' ? html`
       <${YearPill} year=${year} onChange=${setYear} />
-      <${Sum3} inc=${sum(months, (m) => m.in)} out=${sum(months, (m) => m.out)} />
-      <div class="sec flush">${months.filter((m) => m.in || m.out).reverse().map((m) => html`<${PeriodRow} key=${m.key} label=${`${+m.key.slice(5)}月`} sub=${`合計 ${yen(m.in - m.out, true)}`} inc=${m.in} out=${m.out} onClick=${() => { setKey(m.key); setView('cal'); window.scrollTo(0, 0); }} />`)}</div>
+      <${Totals} title=${`${year}年の合計`} s=${{ in: sum(months, (m) => m.in), out: sum(months, (m) => m.out), inv: sum(months, (m) => m.inv) }} />
+      <div class="sec flush">${months.filter((m) => m.in || m.out).reverse().map((m) => html`<${PeriodRow} key=${m.key} label=${`${+m.key.slice(5)}月`} sub=${`収支 ${yen(m.in - m.out, true)}${m.inv ? `・投資 ${yen(m.inv)}` : ''}`} inc=${m.in} out=${m.out} onClick=${() => { setKey(m.key); setView('cal'); window.scrollTo(0, 0); }} />`)}</div>
       ${!months.some((m) => m.in || m.out) && html`<${Empty} title="この年の記録はありません" />`}`
     : html`
       <${MonthPill} s=${s} onPrev=${() => setKey(addMonths(key, -1))} onNext=${() => setKey(addMonths(key, 1))} onToday=${() => setKey(curKey)} />
@@ -142,7 +155,7 @@ export function Records() {
           ${Array.from({ length: (7 - ((lead + days.length) % 7)) % 7 }, (_, i) => html`<span key=${'e' + i} class="cd blank"></span>`)}
         </div>
       </div>`}
-      <${Sum3} inc=${s.in} out=${s.out} />
+      <${Totals} title=${totalTitle(s.key, conf.startDay)} s=${s} />
       ${budget > 0 && html`<button class=${'strip' + (left < 0 ? ' warn' : '')} onClick=${() => app.go('budget')}><span>${left >= 0 ? (isCur ? '今月あと使える' : '予算の残り') : '予算を超えた額'}<b class="num">${yen(Math.abs(left))}</b></span><span class="chev">›</span></button>`}
       ${todo.length > 0 && html`<button class="strip warn" onClick=${() => (todo[0].tx ? app.edit(S.getOne(todo[0].tx)) : app.go(todo[0].go || 'recs'))}><span>確認してほしいこと ${todo.length}件</span><span class="chev">›</span></button>`}
       ${view === 'week' ? html`<div class="sec flush">${weeks.map((w, i) => {

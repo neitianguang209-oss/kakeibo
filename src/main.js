@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { html, AppCtx, useStore, Toasts } from './ui.js';
 import * as S from './store.js';
-import { takeKeyFromUrl, getKey, lsGet } from './api.js';
+import { takeKeyFromUrl, getKey, lsGet, lsSet, lsJson } from './api.js';
 import { onQuotes } from './quotes.js';
 import { ensureAuto } from './calc.js';
 import { Records } from './records.js';
@@ -15,12 +15,12 @@ import { TxDetail } from './detail.js';
 import { Icon } from './icons.js';
 import { PortfolioPage } from './portfolio.js';
 import { ItemsPage } from './items.js';
-import { Settings, Recs, RecSheet, BudgetSheet, CatsSheet, applySkin, applyTheme } from './settings.js';
+import { Settings, Recs, RecSheet, BudgetSheet, CatsSheet, PurgeSheet, applyColors, applyTheme } from './settings.js';
 import { EntrySheet, ImportSheet, ReceiptSheet } from './input.js';
 import { vibrate } from './util.js';
 
 takeKeyFromUrl();
-applySkin(lsGet('kakeibo:skin') || 'orange');
+applyColors(lsJson('kakeibo:colors', { skin: lsGet('kakeibo:skin') || 'orange' }));
 applyTheme(lsGet('kakeibo:theme') || 'auto');
 
 const route = () => location.hash.replace(/^#\/?/, '') || 'input';
@@ -41,6 +41,14 @@ function App() {
     return () => window.removeEventListener('hashchange', f);
   }, []);
   useEffect(() => onQuotes(setQv), []);
+  // 色の設定(別の端末で変えた分も)。次の起動ですぐ使えるように控えておく
+  const look = JSON.stringify({ skin: S.conf().skin, colors: S.conf().colors });
+  useEffect(() => {
+    if (!S.getOne('conf')) return;
+    const v = JSON.parse(look);
+    applyColors(v);
+    lsSet('kakeibo:colors', look);
+  }, [look]);
 
   const toast = useCallback((msg, undo) => {
     const id = Math.random();
@@ -98,6 +106,7 @@ function App() {
     goal: () => html`<${GoalSheet} onClose=${close} />`,
     budget: () => html`<${BudgetSheet} onClose=${close} />`,
     cats: () => html`<${CatsSheet} onClose=${close} />`,
+    purge: () => html`<${PurgeSheet} onClose=${close} />`,
   };
 
   return html`<${AppCtx.Provider} value=${app}>

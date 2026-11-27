@@ -4,7 +4,7 @@ import { html, Sheet, Seg, Field, Empty, useApp } from './ui.js';
 import { Icon, CatIcon } from './icons.js';
 import { ItemLines } from './items.js';
 import { txs, getConf } from './calc.js';
-import { yen, uid, today, mdw, md, PAY } from './util.js';
+import { yen, uid, today, mdw, md } from './util.js';
 import * as S from './store.js';
 
 // ---- 画像を小さくする(写真はクラウドにも送るので、小さめに残す)
@@ -99,7 +99,6 @@ export function MoreSheet({ type, value, onChange, onItems, itemCount, onClose }
       ${type !== 'inv' && html`<${Field} label="写真(レシート・買ったもの)"><div></div></${Field}><${PhotoEdit} photos=${f.photos} onChange=${(v) => set('photos', v)} />`}
       <${Field} label=${type === 'in' ? '入金元' : type === 'inv' ? '投資先' : 'お店'}><input value=${f.store} onChange=${(e) => set('store', e.target.value)} placeholder=${type === 'in' ? '例: バイト先' : '例: スターバックス'} maxLength="40" /></${Field}>
       ${stores.length > 0 && html`<div class="row-chips">${stores.map((s) => html`<button key=${s} class="chip small ghost" onClick=${() => set('store', s)}>${s}</button>`)}</div>`}
-      ${type === 'out' && html`<${Field} label="支払い方法"><div></div></${Field}><div class="row-chips wrap">${PAY.map((p) => html`<button key=${p} class=${'chip small' + (f.pay === p ? ' on' : '')} onClick=${() => set('pay', f.pay === p ? '' : p)}>${p}</button>`)}</div>`}
       <${Field} label="メモ"><textarea rows="3" value=${f.note} onChange=${(e) => set('note', e.target.value)} placeholder="あとで思い出せるように" maxLength="500"></textarea></${Field}>
       <${Field} label="タグ"><div></div></${Field}><${TagEdit} tags=${f.tags} onChange=${(v) => set('tags', v)} known=${known} />
       ${type === 'out' && html`<button class="row" onClick=${() => { onChange(f); close(); onItems(); }}><span class="rm">内訳(買ったものを1つずつ)<small>${itemCount ? `${itemCount}点` : 'まだありません'}</small></span><span class="chev">›</span></button>`}
@@ -108,9 +107,9 @@ export function MoreSheet({ type, value, onChange, onItems, itemCount, onClose }
 }
 
 // ---- よく使う(お気に入り)
-const FAV_KEYS = ['type', 'amount', 'cat', 'memo', 'pay', 'store', 'tags', 'items', 'note'];
+const FAV_KEYS = ['type', 'amount', 'cat', 'sub', 'memo', 'pay', 'store', 'tags', 'items', 'note'];
 export const copyOf = (t) => Object.fromEntries(FAV_KEYS.filter((k) => t[k] != null && t[k] !== '').map((k) => [k, t[k]]));
-const sameKey = (t) => [t.type, t.cat, t.memo || '', t.amount].join('|');
+const sameKey = (t) => [t.type, t.cat, t.sub || '', t.memo || '', t.amount].join('|');
 export const favs = () => S.all('fav').sort((a, b) => (b.used || 0) - (a.used || 0));
 export const findFav = (t) => favs().find((f) => sameKey(f) === sameKey(t));
 export async function toggleFav(t) {
@@ -158,6 +157,7 @@ export function TxDetail({ id, onClose }) {
   const isFav = !!findFav(t);
   const sign = t.type === 'in' ? '+' : '';
   const rows = [
+    ['細かい分類', t.sub],
     ['内容', t.memo],
     [t.type === 'in' ? '入金元' : t.type === 'inv' ? '投資先' : 'お店', t.store],
     ['支払い方法', t.pay],

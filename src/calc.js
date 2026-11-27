@@ -83,13 +83,29 @@ export function upcoming(days = 35) {
 // 月額にならす(年払いは12で割る)
 export const monthlyOf = (r) => (+r.amount || 0) / (+r.every || 1);
 
+// ---- 投資(表示用)は積立がもと: その期間の積立日が来た分 + 手で「投資へ」と記録した分。
+// 株の売り買い(lot)にともなう記録は、手元のお金の計算には使うが、投資の合計には入れない
+export const isLotTx = (t) => t.src === 'lot' || String(t.id).startsWith('l_');
+export function investIn(list, start, end) {
+  const rows = [];
+  for (const p of S.all('plan')) {
+    if (p.active === false && !p.stopFrom) continue;
+    for (const b of planBuys(p, null)) if (b.date >= start && b.date <= end) rows.push({ date: b.date, amount: b.amount, name: p.name, symbol: p.symbol });
+  }
+  for (const t of txIn(list, start, end)) {
+    if (t.type !== 'inv' || t.src === 'plan' || t.plan || isLotTx(t)) continue;
+    rows.push({ date: t.date, amount: +t.amount || 0, name: t.memo || t.cat, tx: t.id });
+  }
+  return rows;
+}
+
 // ---- 月のまとめ
 export function summary(list, key, conf) {
   const p = periodOf(key, conf.startDay);
   const inP = txIn(list, p.start, p.end);
   const out = inP.filter((t) => t.type === 'out');
   const inc = inP.filter((t) => t.type === 'in');
-  const inv = inP.filter((t) => t.type === 'inv');
+  const invRows = investIn(list, p.start, p.end);
   const byCat = [...groupBy(out, (t) => t.cat || 'その他')].map(([cat, l]) => ({ cat, amount: sum(l, (t) => t.amount), n: l.length })).sort((a, b) => b.amount - a.amount);
   const incByCat = [...groupBy(inc, (t) => t.cat || 'その他収入')].map(([cat, l]) => ({ cat, amount: sum(l, (t) => t.amount), n: l.length })).sort((a, b) => b.amount - a.amount);
   const fixed = sum(out.filter((t) => t.rec), (t) => t.amount);
@@ -97,7 +113,7 @@ export function summary(list, key, conf) {
   const byCatVar = [...groupBy(out.filter((t) => !t.rec), (t) => t.cat || 'その他')].map(([cat, l]) => ({ cat, amount: sum(l, (t) => t.amount), n: l.length })).sort((a, b) => b.amount - a.amount);
   return {
     ...p, list: inP, outList: out,
-    out: sum(out, (t) => t.amount), in: sum(inc, (t) => t.amount), inv: sum(inv, (t) => t.amount),
+    out: sum(out, (t) => t.amount), in: sum(inc, (t) => t.amount), inv: sum(invRows, (t) => t.amount), invRows,
     fixed, variable: sum(out, (t) => t.amount) - fixed, byCat, byCatVar, incByCat,
     pending: inP.filter((t) => t.pending),
   };
