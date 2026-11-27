@@ -67,10 +67,19 @@ export function Settings() {
   const pickColor = (k, v) => saveColors({ colors: { ...colors, [k]: v } });
   const trash = S.purgeable().length;
   const saveKey = async () => {
-    setKey(key.trim());
+    const v = key.trim(), old = getKey();
+    if (!v) return app.toast('合言葉を入れてください');
+    app.toast('確かめています…');
+    setKey(v);
     S.resetPull();
-    setK('');
     await S.pull();
+    // ちがう合言葉は残さない(前の合言葉に戻して、入れ直せるようにする)
+    if (S.sync.state === 'err' && /合言葉/.test(S.sync.msg || '')) {
+      setKey(old || '');
+      S.resetPull();
+      return app.toast('合言葉がちがいます。もう一度入れてください');
+    }
+    setK('');
     app.toast(S.sync.state === 'err' ? S.sync.msg : '合言葉を保存して同期しました');
   };
   const exportFile = () => {
@@ -124,9 +133,9 @@ export function Settings() {
       <div class="card-h"><h3>同期</h3></div>
       ${getKey()
         ? html`<div class="row"><span class="rm">スマホとパソコンで同じ記録<small>${st.state === 'err' ? st.msg : st.last ? '最後に同期: ' + new Date(st.last).toLocaleString('ja-JP') : 'まだ'}</small></span><button class="btn small" onClick=${() => S.pull()}>今すぐ</button></div>
-          <details><summary class="muted small">合言葉を変える</summary><div class="inline"><input type="password" value=${key} onChange=${(e) => setK(e.target.value)} placeholder="合言葉" /><button class="btn small" onClick=${saveKey}>保存</button></div></details>`
+          <details><summary class="muted small">合言葉を変える</summary><div class="inline"><input type="password" value=${key} onInput=${(e) => setK(e.target.value)} onKeyDown=${(e) => { if (e.key === 'Enter' && !e.isComposing) saveKey(); }} autocapitalize="off" placeholder="合言葉" /><button class="btn small" onClick=${saveKey}>保存</button></div></details>`
         : html`<p class="muted">じぶんノート・就活アプリと同じ合言葉を入れると、記録がクラウドに保存されて、スマホとパソコンで同じものが見られます。株価の取り寄せとレシートの読み取りにも必要です。</p>
-          <div class="inline"><input type="password" value=${key} onChange=${(e) => setK(e.target.value)} placeholder="合言葉" /><button class="btn small primary" onClick=${saveKey}>保存</button></div>`}
+          <div class="inline"><input type="password" value=${key} onInput=${(e) => setK(e.target.value)} onKeyDown=${(e) => { if (e.key === 'Enter' && !e.isComposing) saveKey(); }} autocapitalize="off" placeholder="合言葉" /><button class="btn small primary" onClick=${saveKey}>保存</button></div>`}
     </section>
     <section class="card">
       <button class="row" onClick=${() => app.open('import')}><span class="rm"><span class="rt">ほかの家計簿から取り込む</span><small>CSV・貼り付け</small></span><span class="chev">›</span></button>
