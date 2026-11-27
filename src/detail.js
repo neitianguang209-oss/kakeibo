@@ -91,7 +91,6 @@ export function TagEdit({ tags, onChange, known, placeholder = '新しいタグ'
 export function MoreSheet({ type, value, onChange, onItems, itemCount, onClose }) {
   const [f, setF] = useState(value);
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
-  const known = useMemo(() => usedTags(txs()), []);
   const stores = useMemo(() => [...new Set(txs().filter((t) => t.type === type && t.store).map((t) => t.store))].slice(0, 8), []);
   const done = (close) => { onChange(f); close(); };
   return html`<${Sheet} title="詳しく残す" onClose=${onClose} full foot=${(close) => html`<button class="btn primary wide" onClick=${() => done(close)}>この内容にする</button>`}>
@@ -100,7 +99,6 @@ export function MoreSheet({ type, value, onChange, onItems, itemCount, onClose }
       <${Field} label=${type === 'in' ? '入金元' : type === 'inv' ? '投資先' : 'お店'}><input value=${f.store} onChange=${(e) => set('store', e.target.value)} placeholder=${type === 'in' ? '例: バイト先' : '例: スターバックス'} maxLength="40" /></${Field}>
       ${stores.length > 0 && html`<div class="row-chips">${stores.map((s) => html`<button key=${s} class="chip small ghost" onClick=${() => set('store', s)}>${s}</button>`)}</div>`}
       <${Field} label="メモ"><textarea rows="3" value=${f.note} onChange=${(e) => set('note', e.target.value)} placeholder="あとで思い出せるように" maxLength="500"></textarea></${Field}>
-      <${Field} label="タグ"><div></div></${Field}><${TagEdit} tags=${f.tags} onChange=${(v) => set('tags', v)} known=${known} />
       ${type === 'out' && html`<button class="row" onClick=${() => { onChange(f); close(); onItems(); }}><span class="rm">内訳(買ったものを1つずつ)<small>${itemCount ? `${itemCount}点` : 'まだありません'}</small></span><span class="chev">›</span></button>`}
     </div>`}
   </${Sheet}>`;
@@ -157,12 +155,12 @@ export function TxDetail({ id, onClose }) {
   const isFav = !!findFav(t);
   const sign = t.type === 'in' ? '+' : '';
   const rows = [
-    ['細かい分類', t.sub],
+    ['分類', t.sub],
+    ['タグ', (t.tags || []).join('・')],
     ['内容', t.memo],
     [t.type === 'in' ? '入金元' : t.type === 'inv' ? '投資先' : 'お店', t.store],
     ['支払い方法', t.pay],
     ['メモ', t.note],
-    ['タグ', (t.tags || []).join('・')],
     ['記録の仕方', t.rec ? '固定費の自動記録' : t.src === 'receipt' ? 'レシート読み取り' : t.src === 'claude' ? 'Claude' : t.src === 'plan' ? '積立の自動記録' : ''],
   ].filter((r) => r[1]);
   const del = async (close) => {

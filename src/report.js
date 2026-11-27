@@ -5,7 +5,7 @@ import { Donut, Bars } from './charts.js';
 import { CatIcon } from './icons.js';
 import { TxRow } from './home.js';
 import { MonthPill, YearPill, Totals, totalTitle } from './records.js';
-import { yen, pct, today, periodKeyOf, periodOf, addMonths, sum, catInfo, short, md, mdw, groupBy } from './util.js';
+import { yen, pct, today, periodKeyOf, periodOf, addMonths, sum, catInfo, short, md, mdw, groupBy, tagSplit } from './util.js';
 import { txs, summary, getConf, insights, nextMonthPlan, monthLabel } from './calc.js';
 import * as S from './store.js';
 import { shortName } from './assets.js';
@@ -117,7 +117,17 @@ export function CatPage({ mode, cat, start, end }) {
   const [pickSub, setPickSub] = useState(null);
   const bySub = [...groupBy(rows, (t) => t.sub || '')].map(([k, l]) => ({ k, n: l.length, a: sum(l, (t) => t.amount) })).sort((a, b) => !a.k - !b.k || b.a - a.a);
   const hasSub = bySub.some((x) => x.k);
-  const shown = pickSub == null ? rows : rows.filter((t) => (t.sub || '') === pickSub);
+  const [pickTag, setPickTag] = useState(null);
+  const subRows = pickSub == null ? rows : rows.filter((t) => (t.sub || '') === pickSub);
+  // タグごとの金額(1件にタグが2つ以上なら等分)
+  const tagMap = new Map();
+  for (const t of subRows) for (const [k, a] of tagSplit(t)) { const x = tagMap.get(k) || { k, n: 0, a: 0 }; x.n++; x.a += a; tagMap.set(k, x); }
+  const byTag = [...tagMap.values()].sort((a, b) => !a.k - !b.k || b.a - a.a);
+  const hasTag = pickSub != null && byTag.some((x) => x.k);
+  const multiTag = subRows.some((t) => (t.tags || []).length > 1);
+  const subTotal = sum(subRows, (t) => t.amount);
+  const shown = !hasTag || pickTag == null ? subRows : subRows.filter((t) => (pickTag ? (t.tags || []).includes(pickTag) : !(t.tags || []).length));
+  const chooseSub = (k) => { setPickSub(pickSub === k ? null : k); setPickTag(null); };
   const budget = mode === 'out' ? conf.catBudgets?.[cat] : 0;
   const oneMonth = (new Date(end) - new Date(start)) / 864e5 < 32;
   const prev = vals.slice(2, 5).filter((v) => v > 0);
@@ -134,9 +144,13 @@ export function CatPage({ mode, cat, start, end }) {
       <${Bars} labels=${keys.map((k) => +k.slice(5) + '月')} height=${150} fmt=${(v, full) => (full ? yen(v) : short(v))}
         series=${[{ key: 'v', label: cat, color: catInfo(cat, conf).color, values: vals }]} />
     </section>
-    ${hasSub && html`<div class="sec flush">${bySub.map((x) => html`<button key=${x.k || 'none'} class=${'row sub-row' + (pickSub === x.k ? ' on' : '')} aria-pressed=${pickSub === x.k} onClick=${() => setPickSub(pickSub === x.k ? null : x.k)}>
+    ${hasSub && html`<div class="sec flush">${bySub.map((x) => html`<button key=${x.k || 'none'} class=${'row sub-row' + (pickSub === x.k ? ' on' : '')} aria-pressed=${pickSub === x.k} onClick=${() => chooseSub(x.k)}>
       <span class="rm"><span class="rt">${x.k || '分類なし'}</span><small>${x.n}件</small></span>
       <span class="rv"><b class="num">${yen(x.a)}</b><em class="num">${((x.a / (total || 1)) * 100).toFixed(1)}%</em></span></button>`)}</div>`}
+    ${hasTag && html`<h4 class="grp">${pickSub}のタグ</h4><div class="sec flush">${byTag.map((x) => html`<button key=${x.k || 'none'} class=${'row sub-row' + (pickTag === x.k ? ' on' : '')} aria-pressed=${pickTag === x.k} onClick=${() => setPickTag(pickTag === x.k ? null : x.k)}>
+      <span class="rm"><span class="rt">${x.k || 'タグなし'}</span><small>${x.n}件</small></span>
+      <span class="rv"><b class="num">${yen(x.a)}</b><em class="num">${((x.a / (subTotal || 1)) * 100).toFixed(1)}%</em></span></button>`)}</div>
+      ${multiTag && html`<p class="fine">タグが2つ以上ついた記録は、金額をタグの数で等分して数えています。</p>`}`}
     <div class="dlist">${[...groupBy(shown.slice(0, limit), (t) => t.date)].map(([d, l]) => html`<div key=${d} class="day-group">
       <div class="day-h"><span>${d.slice(0, 4)}年${md(d).replace('/', '月')}日(${mdw(d).slice(-2, -1)})</span></div>
       ${l.map((t) => html`<${TxRow} key=${t.id} t=${t} conf=${conf} />`)}</div>`)}</div>

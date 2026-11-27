@@ -3,7 +3,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { html, Sheet, Seg, Keypad, evalExpr, useApp } from './ui.js';
 import * as S from './store.js';
 import { fn, getKey, lsGet, lsSet } from './api.js';
-import { catList, catInfo, guessCat, INV_CATS, today, addDays, yen, uid, mdw, fold, vibrate, periodKeyOf, PAY, subsOf } from './util.js';
+import { catList, catInfo, guessCat, INV_CATS, today, addDays, yen, uid, mdw, fold, vibrate, periodKeyOf, PAY, subsOf, tagsOf, tagKey, IN_IDS } from './util.js';
 import { Totals } from './records.js';
 import { txs, memoHistory, getConf, summary } from './calc.js';
 import { ItemsSheet, ItemRows, cleanItems, itemsSum } from './items.js';
@@ -27,34 +27,62 @@ const lastPay = () => {
 
 const PAY_SHORT = { 'QR・電子マネー': 'QR・電子', 口座引き落とし: '引き落とし' };
 
-// 細かい分類(使い道)の候補チップ。足す・外すもここで
-function SubPicker({ cat, value, onChange }) {
-  const conf = getConf();
-  const list = subsOf(cat, conf);
+// 候補チップ(細分類・タグ共通)。足す・外すもここで。multi のときは複数選べる
+function ChipPicker({ label, list, value, multi, onChange, onStore, placeholder, resetKey }) {
   const [mode, setMode] = useState(null); // null | 'add' | 'edit'
   const [v, setV] = useState('');
-  useEffect(() => { setMode(null); setV(''); }, [cat]);
-  const store = (next) => S.setConf({ subs: { ...(getConf().subs || {}), [cat]: next } });
+  useEffect(() => { setMode(null); setV(''); }, [resetKey]);
+  const sel = multi ? value : value ? [value] : [];
+  const has = (x) => sel.includes(x);
+  const pick = (x) => {
+    vibrate(5);
+    if (multi) onChange(has(x) ? value.filter((y) => y !== x) : [...value, x]);
+    else onChange(value === x ? '' : x);
+  };
   const add = () => {
-    const n = v.trim().slice(0, 16);
+    const n = v.trim().replace(/^#/, '').slice(0, 16);
     if (n) {
-      if (!list.includes(n)) store([...list, n]);
-      onChange(n);
+      if (!list.includes(n)) onStore([...list, n]);
+      if (!has(n)) multi ? onChange([...value, n]) : onChange(n);
     }
     setV('');
     setMode(null);
   };
-  const shown = value && !list.includes(value) ? [...list, value] : list;
-  return html`<div class="pick-row"><span class="fl">分類</span><div class="pick-body">
+  const drop = (x) => {
+    onStore(list.filter((y) => y !== x));
+    if (has(x)) multi ? onChange(value.filter((y) => y !== x)) : onChange('');
+  };
+  const shown = [...list, ...sel.filter((x) => !list.includes(x))];
+  return html`<div class="pick-row"><span class="fl">${label}</span><div class="pick-body">
     <div class="row-chips wrap">
       ${shown.map((x) => (mode === 'edit'
-        ? html`<button key=${x} class="chip small del" aria-label=${`${x}を候補から外す`} onClick=${() => { store(list.filter((y) => y !== x)); if (value === x) onChange(''); }}>${x} ✕</button>`
-        : html`<button key=${x} class=${'chip small' + (value === x ? ' on' : '')} aria-pressed=${value === x} onClick=${() => { vibrate(5); onChange(value === x ? '' : x); }}>${x}</button>`))}
+        ? html`<button key=${x} class="chip small del" aria-label=${`${x}を候補から外す`} onClick=${() => drop(x)}>${x} ✕</button>`
+        : html`<button key=${x} class=${'chip small' + (has(x) ? ' on' : '')} aria-pressed=${has(x)} onClick=${() => pick(x)}>${x}</button>`))}
       ${mode !== 'edit' && html`<button class="chip small ghost" onClick=${() => setMode(mode === 'add' ? null : 'add')}>＋ 足す</button>`}
       ${list.length > 0 && html`<button class="chip small ghost" onClick=${() => setMode(mode === 'edit' ? null : 'edit')}>${mode === 'edit' ? '終わる' : '編集'}</button>`}
     </div>
-    ${mode === 'add' && html`<div class="inline"><input autoFocus value=${v} maxLength="16" placeholder=${`${cat}の分類(例: 差し入れ)`} onChange=${(e) => setV(e.target.value)} onKeyDown=${(e) => e.key === 'Enter' && add()} /><button class="btn small primary" onClick=${add}>足す</button></div>`}
+    ${mode === 'add' && html`<div class="inline"><input autoFocus value=${v} maxLength="16" placeholder=${placeholder} onChange=${(e) => setV(e.target.value)} onKeyDown=${(e) => e.key === 'Enter' && add()} /><button class="btn small primary" onClick=${add}>足す</button></div>`}
   </div></div>`;
+}
+
+// 大分類 → 細分類 → タグ。細分類を選ぶと、その中のタグ(品目)が出る
+function SubPicker({ cat, value, onChange }) {
+  const conf = getConf();
+  return html`<${ChipPicker} label="分類" list=${subsOf(cat, conf)} value=${value} onChange=${onChange} resetKey=${cat}
+    onStore=${(next) => S.setConf({ subs2: { ...(getConf().subs2 || {}), [cat]: next } })} placeholder=${`${cat}の分類(例: 差し入れ)`} />`;
+}
+function TagPicker({ cat, sub, value, onChange }) {
+  const conf = getConf();
+  return html`<${ChipPicker} label="タグ" multi list=${tagsOf(cat, sub, conf)} value=${value} onChange=${onChange} resetKey=${cat + '/' + sub}
+    onStore=${(next) => S.setConf({ tagsets: { ...(getConf().tagsets || {}), [tagKey(cat, sub)]: next } })} placeholder=${`${sub}の中身(例: キャベツ)`} />`;
+}
+// 記録に使ったタグを、次から候補に出す
+function rememberTags(cat, sub, tags) {
+  if (!sub || !tags?.length) return;
+  const conf = getConf();
+  const list = tagsOf(cat, sub, conf);
+  const fresh = tags.filter((g) => !list.includes(g));
+  if (fresh.length) S.setConf({ tagsets: { ...(conf.tagsets || {}), [tagKey(cat, sub)]: [...list, ...fresh] } });
 }
 
 export function EntrySheet({ tx, preset = {}, onClose, page = false }) {
@@ -69,9 +97,12 @@ export function EntrySheet({ tx, preset = {}, onClose, page = false }) {
   const [catTouched, setCatTouched] = useState(!!init.cat);
   const [date, setDate] = useState(init.date || today());
   const [memo, setMemo] = useState(init.memo || '');
-  const moreOf = (x) => ({ store: x.store || '', pay: x.pay || '', note: x.note || '', tags: x.tags || [], photos: (x.photos || []).map((id) => ({ id })) });
+  const moreOf = (x) => ({ store: x.store || '', pay: x.pay || '', note: x.note || '', photos: (x.photos || []).map((id) => ({ id })) });
   const [more, setMore] = useState(() => moreOf(editing || init.pay ? init : { ...init, pay: lastPay() }));
-  const [subcat, setSubcat] = useState(init.sub || '');
+  const [subcat, setSubcat0] = useState(init.sub || '');
+  const [tags, setTags] = useState(init.tags || []);
+  // 細分類を変えたら、タグは選び直し
+  const setSubcat = (v) => { if (v !== subcat) setTags([]); setSubcat0(v); };
   const [kp, setKp] = useState(false); // テンキーは「金額」を押したときだけ
   const midRef = useRef(null);
   const kpRef = useRef(null);
@@ -111,7 +142,7 @@ export function EntrySheet({ tx, preset = {}, onClose, page = false }) {
     }
   }, [memo]);
   useEffect(() => {
-    if (!cats.some((c) => c.id === cat)) { const l = lastCatOf(type); setCat(l && cats.some((c) => c.id === l) ? l : null); }
+    if (!cats.some((c) => c.id === cat)) { const l = lastCatOf(type); setCat(l && cats.some((c) => c.id === l) ? l : null); setSubcat0(''); setTags([]); }
   }, [type]);
 
   // 前の記録・よく使う記録を、そのまま入れる
@@ -121,7 +152,8 @@ export function EntrySheet({ tx, preset = {}, onClose, page = false }) {
     setCat(x.cat);
     setCatTouched(true);
     setMemo(x.memo || '');
-    setSubcat(x.sub || '');
+    setSubcat0(x.sub || '');
+    setTags(x.tags || []);
     setMore((m) => moreOf({ ...x, pay: x.pay || m.pay }));
     setItems(x.items || []);
   };
@@ -132,17 +164,20 @@ export function EntrySheet({ tx, preset = {}, onClose, page = false }) {
     const id = tx?.id || uid('t');
     const rec = { ...(tx || {}), ...(preset.symbol ? { symbol: preset.symbol } : {}), id, type, amount: Math.abs(amount), cat: useCat, date, memo: memo.trim(), pay: type === 'out' ? more.pay : '', t: tx?.t || Date.now(), src: tx?.src || 'manual' };
     delete rec.pending;
-    if (type === 'out' && subcat) rec.sub = subcat;
+    if (type !== 'inv' && subcat) rec.sub = subcat;
     else delete rec.sub;
+    if (type !== 'inv' && tags.length) rec.tags = tags;
+    else delete rec.tags;
     const its = type === 'out' ? cleanItems(items, useCat) : [];
     if (its.length) rec.items = its;
     else delete rec.items;
     const photoIds = await savePhotos(more.photos, tx?.photos || [], id);
-    for (const [k, v] of Object.entries({ store: more.store.trim(), note: more.note.trim(), tags: more.tags, photos: photoIds })) {
+    for (const [k, v] of Object.entries({ store: more.store.trim(), note: more.note.trim(), photos: photoIds })) {
       if (v.length) rec[k] = v;
       else delete rec[k];
     }
     await S.save('tx', rec);
+    if (type !== 'inv') rememberTags(useCat, subcat, tags);
     if (cat) lsSet('kakeibo:lastcat:' + type, cat);
     if (type === 'out' && !editing) lsSet('kakeibo:lastpay', more.pay);
     vibrate(12);
@@ -152,7 +187,8 @@ export function EntrySheet({ tx, preset = {}, onClose, page = false }) {
       setExpr('');
       setMemo('');
       setItems([]);
-      setSubcat('');
+      setSubcat0('');
+      setTags([]);
       setKp(false);
       setMore((m) => moreOf({ pay: m.pay }));
       setCatTouched(false);
@@ -196,9 +232,10 @@ export function EntrySheet({ tx, preset = {}, onClose, page = false }) {
           ? html`<button class="cat more" onClick=${() => setMoreCats(true)}><${Icon} k="list" /><span class="cn">ほか${cats.length - shownCats.length}つ</span></button>`
           : type !== 'inv' && html`<button class="cat more" onClick=${() => { if (!page) onClose(); app.open('cats'); }}><${Icon} k="edit" /><span class="cn">編集</span></button>`}
       </div>
-      ${type === 'out' && cat && html`<${SubPicker} cat=${cat} value=${subcat} onChange=${setSubcat} />`}
+      ${type !== 'inv' && cat && html`<${SubPicker} cat=${cat} value=${subcat} onChange=${setSubcat} />`}
+      ${type !== 'inv' && cat && subcat && html`<${TagPicker} cat=${cat} sub=${subcat} value=${tags} onChange=${setTags} />`}
       ${type === 'out' && html`<div class="pick-row"><span class="fl">払い方</span><div class="pick-body"><div class="row-chips wrap">${[...PAY, ...(more.pay && !PAY.includes(more.pay) ? [more.pay] : [])].map((p) => html`<button key=${p} class=${'chip small' + (more.pay === p ? ' on' : '')} aria-pressed=${more.pay === p} onClick=${() => { vibrate(5); setMore((m) => ({ ...m, pay: m.pay === p ? '' : p })); }}>${PAY_SHORT[p] || p}</button>`)}</div></div></div>`}`;
-  const filled = [more.photos.length ? `写真${more.photos.length}` : '', more.store, more.tags.join(' '), more.note ? 'メモ' : '', items.length ? `内訳${items.length}` : ''].filter(Boolean).join('・');
+  const filled = [more.photos.length ? `写真${more.photos.length}` : '', more.store, more.note ? 'メモ' : '', items.length ? `内訳${items.length}` : ''].filter(Boolean).join('・');
   const tools = html`<div class="ktool">
         <button class="more-btn" onClick=${() => setSub('more')}><${Icon} k="plus" size="16" w="2.2" />詳しく${filled && html`<small>${filled}</small>`}</button>
         ${kp && html`<${React.Fragment}>
@@ -347,7 +384,7 @@ function parseLines(text, conf) {
     if (!amount) continue;
     const memo = rest.join(' ').slice(0, 60);
     if (!cat) cat = guessCat(memo, hist) || (type === 'in' ? 'その他収入' : 'その他');
-    if (['給料', 'メルカリ', '臨時収入', '仕送り', '配当・分配金', 'その他収入'].includes(cat)) type = 'in';
+    if (IN_IDS.has(cat)) type = 'in';
     out.push({ date: date || today(), amount, cat, memo, type, on: true });
   }
   return out;
@@ -388,7 +425,7 @@ function parseMoneyNote(text) {
     const name = catName.get(cid) || 'その他';
     let type = typ === '1' ? 'in' : 'out';
     let cat = name;
-    if (name === '投資') { type = 'out'; cat = '自己投資'; } // 前のアプリの「投資」は自己投資(カメラ・本など)。株の売買ではない
+    if (name === '投資') { type = 'out'; cat = '趣味'; } // 前のアプリの「投資」は自己投資(カメラ・本など)。株の売買ではない
     else if (name === 'バイト' && type === 'out') cat = 'その他';
     out.push({ date: `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`, amount, cat, memo: (memo || '').replace(/\\n/g, ' ').trim().slice(0, 60), type, on: true });
   }

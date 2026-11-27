@@ -63,7 +63,7 @@ export function Icon({ k, size = 22, w = 1.7, fill = 'none' }) {
 
 const CAT_ICON = {
   食費: 'food', 外食: 'glass', 日用品: 'bottle', 衣服: 'shirt', 美容: 'lipstick', 医療費: 'medical', 教育費: 'book', 光熱費: 'tap', 交通費: 'train', 遊び: 'ticket', 甘え: 'cake', 学食: 'bento', ゼミ: 'cap', 引っ越し諸々: 'box', 住まい: 'home', 通信: 'wifi', サブスク: 'phone', 習い事: 'mic', 自己投資: 'target', その他: 'tagi',
-  給料: 'wallet', 賞与: 'gift', 仕送り: 'mail', メルカリ: 'bag', 臨時収入: 'spark', '配当・分配金': 'leaf', その他収入: 'coin',
+  趣味: 'mic', 給料: 'wallet', 賞与: 'gift', 仕送り: 'mail', メルカリ: 'bag', 臨時収入: 'spark', '配当・分配金': 'leaf', その他収入: 'coin',
   投資: 'chart', 積立: 'leaf', 株: 'chart', 投資信託: 'basket', その他投資: 'chart', 残高あわせ: 'scale',
 };
 

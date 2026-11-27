@@ -42,7 +42,7 @@ export async function ensureAuto() {
       if (!due || due > t) continue;
       const id = `r_${r.id}_${m}`;
       if (S.exists(id)) continue;
-      add.push({ id, date: due, type: r.type || 'out', amount: +r.amount || 0, cat: r.cat, memo: r.name, rec: r.id, pending: !!r.variable, src: 'rec', pay: r.pay || '' });
+      add.push({ id, date: due, type: r.type || 'out', amount: +r.amount || 0, cat: r.cat, memo: r.name, rec: r.id, pending: !!r.variable, src: 'rec', pay: r.pay || '', ...(r.sub ? { sub: r.sub } : {}) });
     }
   }
   const conf = getConf();
@@ -382,10 +382,10 @@ export function insights(list, conf) {
   }
   // 4) 固定費・サブスク(年額で見る)
   const recs = S.all('rec').filter((r) => r.active !== false && (r.type || 'out') === 'out');
-  const subs = recs.filter((r) => ['サブスク', '習い事'].includes(r.cat));
+  const subs = recs.filter((r) => ['サブスク', '趣味', '習い事'].includes(r.cat));
   if (subs.length) {
     const m = sum(subs, monthlyOf);
-    out.push({ k: 'subs', icon: '📱', level: 'tip', title: `サブスク・習い事は月 ${yen(m)}(年 ${yen(m * 12)})`, body: subs.map((r) => `${r.name} 年${short(monthlyOf(r) * 12)}円`).join('・') + '。最近使っていないものがないか、ひと月に一度だけ見直すのがおすすめ。', go: 'recs' });
+    out.push({ k: 'subs', icon: '📱', level: 'tip', title: `サブスク・趣味の固定費は月 ${yen(m)}(年 ${yen(m * 12)})`, body: subs.map((r) => `${r.name} 年${short(monthlyOf(r) * 12)}円`).join('・') + '。最近使っていないものがないか、ひと月に一度だけ見直すのがおすすめ。', go: 'recs' });
   }
   // 5) 記録し忘れ(金額が毎回ちがう固定費・いつも記録しているのに今月まだのもの)
   for (const p of cur.pending) {

@@ -4,7 +4,7 @@ import { html, useApp, Empty, PageHead } from './ui.js';
 import { Icon, CatIcon } from './icons.js';
 import { Meter } from './charts.js';
 import { MonthPill } from './records.js';
-import { yen, today, periodKeyOf, addMonths, parseD, catInfo } from './util.js';
+import { yen, today, periodKeyOf, addMonths, parseD, catInfo, catList } from './util.js';
 import { txs, summary, getConf } from './calc.js';
 
 export function Budget() {
@@ -15,7 +15,9 @@ export function Budget() {
   const [key, setKey] = useState(curKey);
   const s = summary(list, key, conf);
   const isCur = key === curKey;
-  const cb = conf.catBudgets || {};
+  // 予算は今の分類の分だけ(前の分類に入れていた予算は数えない)
+  const ids = new Set(catList('out', conf).map((c) => c.id));
+  const cb = Object.fromEntries(Object.entries(conf.catBudgets || {}).filter(([k]) => ids.has(k)));
   const sumCat = Object.values(cb).reduce((a, v) => a + (+v || 0), 0);
   const total = conf.budget || 0;
   const days = (parseD(s.end) - parseD(s.start)) / 864e5 + 1;
@@ -47,7 +49,7 @@ export function Budget() {
         return html`<button key=${c.cat} class="row" onClick=${edit}>
           <span class="ri"><${CatIcon} id=${c.cat} conf=${conf} /></span>
           <span class="br-main">
-            <span class="br-top"><b>${c.cat}</b>${c.b > 0 ? html`<span class=${'num ' + (r < 0 ? 'out' : '')}>${r >= 0 ? '残り ' + yen(r) : yen(-r) + ' 超えています'}</span>` : html`<span class="muted-s">予算未設定(タップで設定)</span>`}</span>
+            <span class="br-top"><b>${c.cat}</b>${c.b > 0 ? html`<span class=${'num ' + (r < 0 ? 'out' : '')}>${r >= 0 ? '残り ' + yen(r) : yen(-r) + ' 超えています'}</span>` : html`<span class="muted-s">${ids.has(c.cat) ? '予算未設定(タップで設定)' : '前の分類(書き換え待ち)'}</span>`}</span>
             ${c.b > 0 && html`<${Meter} value=${c.used} max=${c.b} color=${ci.color} mark=${pace} />`}
             <small>${c.b > 0 ? `${Math.round((c.used / c.b) * 100)}%・予算 ${yen(c.b)}・使った額 ${yen(c.used)}` : `使った額 ${yen(c.used)}`}</small>
           </span></button>`;

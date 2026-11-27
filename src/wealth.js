@@ -181,7 +181,7 @@ function Dividends({ w, qv }) {
   const paying = rows.filter((r) => r.annual > 0);
   const annual = sum(paying, (r) => r.annual);
   const value = sum(w.open, (p) => p.value || 0), cost = sum(w.open, (p) => p.cost || 0);
-  const got = w.list.filter((t) => t.type === 'in' && t.cat === '配当・分配金');
+  const got = w.list.filter((t) => t.type === 'in' && (t.cat === '配当・分配金' || t.sub === '配当・分配金'));
   const [year, setYear] = useState(+today().slice(0, 4));
   const gotYear = got.filter((t) => t.date.startsWith(String(year)));
   const months = Array.from({ length: 12 }, (_, i) => sum(paying, (r) => r.months[i]));
@@ -207,7 +207,7 @@ function Dividends({ w, qv }) {
     <h4 class="grp">受け取った配当${got.length ? `(合計 ${yen(sum(got, (t) => t.amount))})` : ''}</h4>
     <div class="sec flush">
       ${got.slice(0, 20).map((t) => html`<${TxRow} key=${t.id} t=${{ ...t, memo: `${t.date.slice(0, 4)}/${md(t.date)} ${t.memo || ''}` }} conf=${w.conf} />`)}
-      <button class="row" onClick=${() => app.edit(null, { type: 'in', cat: '配当・分配金' })}><span class="rm"><span class="rt" style=${{ color: 'var(--accent)' }}>＋ 受け取った配当を記録する</span></span></button>
+      <button class="row" onClick=${() => app.edit(null, { type: 'in', cat: 'その他収入', sub: '配当・分配金' })}><span class="rm"><span class="rt" style=${{ color: 'var(--accent)' }}>＋ 受け取った配当を記録する</span></span></button>
     </div>
     <p class="fine">予想は「直近1年の1株配当 × いま持っている数」の目安です(会社の発表前の変更は入りません)。入金の月は、日本株は権利落ちの約3か月後、米国株は約1か月後として置いています。NISA以外は約20%の税金が引かれます。</p>
   </${React.Fragment}>`;
@@ -222,7 +222,7 @@ export function HoldingCard({ p }) {
   const [dps, setDps] = useState(meta.dps != null ? String(meta.dps) : '');
   const unit = p.kind === 'fund' ? '1万口' : '1株';
   return html`<section class="card">
-    <div class="card-h"><h3>配当</h3><button class="text-btn" onClick=${() => app.edit(null, { type: 'in', cat: '配当・分配金', symbol: p.symbol, memo: shortName(p.name) })}>受け取りを記録 ›</button></div>
+    <div class="card-h"><h3>配当</h3><button class="text-btn" onClick=${() => app.edit(null, { type: 'in', cat: 'その他収入', sub: '配当・分配金', symbol: p.symbol, memo: shortName(p.name) })}>受け取りを記録 ›</button></div>
     <div class="pl-grid"><div><span>1年の予想(税引前)</span><b class="num">${yen(d.annual)}</b></div><div><span>利回り</span><b class="num">${d.annual && p.value ? ((d.annual / p.value) * 100).toFixed(2) + '%' : '—'}</b></div></div>
     <${Field} label=${`${unit}あたりの年間配当(${p.currency === 'USD' ? 'ドル' : '円'})`} hint=${d.auto ? `空にすると、直近1年の実績 ${+d.auto.toFixed(2)} を使います` : '自動で取れないときは、ここに入れると予想に使います'}>
       <div class="inline" style=${{ margin: 0 }}><${NumInput} value=${dps} onChange=${setDps} placeholder=${d.auto ? String(+d.auto.toFixed(2)) : ''} /><button class="btn small" onClick=${async () => { await saveMeta(p.symbol, { dps: dps === '' ? null : +dps }); app.toast('配当を保存しました'); }}>保存</button></div></${Field}>

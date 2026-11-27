@@ -7,7 +7,7 @@ import { txs, getConf, monthlyOf, cashAt, upcoming, summary } from './calc.js';
 import * as S from './store.js';
 import { getKey, setKey, lsSet, lsGet } from './api.js';
 
-export const VERSION = '2.1.0';
+export const VERSION = '2.2.0';
 
 // 明るさ: 端末に合わせる / ライト / ダーク(この端末だけの設定)
 export function applyTheme(t) {
@@ -174,9 +174,10 @@ export function BudgetSheet({ onClose }) {
     return { cat: m, total: prevs.length ? sum(prevs, (p) => p.out) / prevs.length : 0 };
   }, []);
   const cats = useMemo(() => [...catList('out', conf)].sort((a, b) => (avg.cat.get(b.id) || 0) - (avg.cat.get(a.id) || 0)), []);
-  const sumCat = sum(Object.values(cb), (v) => +v || 0);
+  const sumCat = sum(cats, (c) => +cb[c.id] || 0);
   const save = async (close) => {
-    const clean = Object.fromEntries(Object.entries(cb).filter(([, v]) => +v > 0).map(([k, v]) => [k, +v]));
+    const ids = new Set(cats.map((c) => c.id));
+    const clean = Object.fromEntries(Object.entries(cb).filter(([k, v]) => ids.has(k) && +v > 0).map(([k, v]) => [k, +v]));
     await S.setConf({ budget: +b || 0, catBudgets: clean });
     close();
     app.toast('予算を保存しました');
@@ -264,9 +265,9 @@ export function CatsSheet({ onClose }) {
 
 // ---- 固定費・サブスク・給料
 const PRESETS = [
-  { name: 'ボイトレ', cat: '習い事', amount: 11000, day: 1 },
-  { name: '家賃', cat: '住まい', amount: 70000, day: 27 },
-  { name: '携帯代', cat: '通信', amount: 3000, day: 26 },
+  { name: 'ボイトレ', cat: '趣味', sub: 'ボイトレ', amount: 11000, day: 1 },
+  { name: '家賃', cat: 'その他', sub: '住まい', amount: 70000, day: 27 },
+  { name: '携帯代', cat: 'その他', sub: '通信', amount: 3000, day: 26 },
   { name: '電気代', cat: '光熱費', amount: 4000, day: 20, variable: true },
   { name: 'ガス代', cat: '光熱費', amount: 3000, day: 20, variable: true },
   { name: '水道代', cat: '光熱費', amount: 4000, day: 20, variable: true, every: 2 },

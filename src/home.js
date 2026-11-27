@@ -13,7 +13,9 @@ export function TxRow({ t, conf, hl = '' }) {
   // 品目があれば「もやし・ちくわ ほか2点」のように、買ったものを見せる
   const names = (t.items || []).map((x) => x.n).filter(Boolean);
   const bought = names.length ? names.slice(0, 2).join('・') + (names.length > 2 ? ` ほか${names.length - 2}点` : '') : '';
-  const line = [t.sub, memo || bought || t.store].filter(Boolean).join('・');
+  // 「野菜(キャベツ・にんじん)」のように、分類とタグを並べる
+  const kind = t.sub && t.tags?.length ? `${t.sub}(${t.tags.join('・')})` : t.sub || (t.tags || []).join('・');
+  const line = [kind, memo || bought || t.store].filter(Boolean).join('・');
   const sub = hit ? `${hit.n} ${yen(hit.a)}` : line || (t.type === 'adj' ? '残高あわせ' : '');
   const tap = () => {
     if (t.type === 'adj') return;
