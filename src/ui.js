@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, useContext, createContext, useSyncExternalStore } from 'react';
 import htm from 'htm';
 import * as S from './store.js';
+import { Icon } from './icons.js';
 import { vibrate } from './util.js';
 export const html = htm.bind(React.createElement);
 
@@ -32,7 +33,7 @@ export function Sheet({ title, onClose, children, full, foot, right }) {
   return html`<div class=${'sheet-wrap' + (closing ? ' closing' : '')} onClick=${(e) => e.target === e.currentTarget && close()}>
     <div class=${'sheet' + (full ? ' full' : '')} role="dialog" aria-label=${title}>
       <div class="sheet-head">
-        <div class="sheet-title"><button class="icon-btn" onClick=${close} aria-label="閉じる">✕</button><h2>${title}</h2><div class="sheet-right">${right}</div></div>
+        <div class="sheet-title"><button class="icon-btn" onClick=${close} aria-label="閉じる"><${Icon} k="close" size="20" /></button><h2>${title}</h2><div class="sheet-right">${right}</div></div>
       </div>
       <div class="sheet-body">${typeof children === 'function' ? children(close) : children}</div>
       ${foot && html`<div class="sheet-foot">${typeof foot === 'function' ? foot(close) : foot}</div>`}
@@ -101,8 +102,13 @@ export function Toasts({ list }) {
   return html`<div class="toasts">${list.map((t) => html`<div key=${t.id} class="toast">${t.msg}${t.undo && html`<button onClick=${t.undo}>元に戻す</button>`}</div>`)}</div>`;
 }
 
-export function Empty({ icon = '🐷', title, body, children }) {
-  return html`<div class="empty"><div class="empty-i">${icon}</div><b>${title}</b>${body && html`<p>${body}</p>`}${children}</div>`;
+export function Empty({ title, body, children }) {
+  return html`<div class="empty"><b>${title}</b>${body && html`<p>${body}</p>`}${children}</div>`;
+}
+
+// 1段下の画面の見出し(戻る・今いる場所)
+export function PageHead({ title, right }) {
+  return html`<header class="top"><button class="icon-btn" onClick=${() => history.back()} aria-label="もどる"><${Icon} k="back" /></button><h1>${title}</h1>${right || html`<span class="bar-r"></span>`}</header>`;
 }
 
 export function Field({ label, children, hint }) {

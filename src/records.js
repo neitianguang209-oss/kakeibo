@@ -1,9 +1,10 @@
-// カレンダー: 月の選択・収入/支出/合計・月曜はじまりのカレンダー・日ごとの一覧(MoneyNote と同じ並び)
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { html, useApp, Empty } from './ui.js';
+// カレンダー: いつ・いくら使ったか。見方は「カレンダー / 週ごと / 月ごと」の3つ。下に収入・支出・合計と日ごとの一覧
+import React, { useState, useMemo, useRef } from 'react';
+import { html, useApp, Empty, Seg } from './ui.js';
+import { Icon } from './icons.js';
 import { TxRow } from './home.js';
 import { itemText } from './items.js';
-import { yen, today, periodKeyOf, addMonths, parseD, addDays, groupBy, sum, fold, mdw, catList, md } from './util.js';
+import { yen, today, periodKeyOf, addMonths, parseD, addDays, groupBy, sum, fold, mdw, md, catList } from './util.js';
 import { txs, summary, getConf, upcoming, insights } from './calc.js';
 import * as S from './store.js';
 
@@ -18,20 +19,55 @@ export function MonthPill({ s, onPrev, onNext, onToday }) {
     <button class="mp-b" onClick=${onNext} aria-label="次の月">›</button>
   </div>`;
 }
+export function YearPill({ year, onChange }) {
+  return html`<div class="mpill">
+    <button class="mp-b" onClick=${() => onChange(year - 1)} aria-label="前の年">‹</button>
+    <button class="mp-c" onClick=${() => onChange(+today().slice(0, 4))}><b>${year}年</b><small>(1月〜12月)</small></button>
+    <button class="mp-b" onClick=${() => onChange(year + 1)} aria-label="次の年">›</button>
+  </div>`;
+}
+export function Sum3({ inc, out }) {
+  return html`<div class="sum3"><div><span>収入</span><b class="num in">${yen(inc)}</b></div><div><span>支出</span><b class="num out">${yen(out)}</b></div><div><span>合計</span><b class=${'num ' + (inc - out >= 0 ? 'in' : 'out')}>${yen(inc - out, true)}</b></div></div>`;
+}
+
+const dayHead = (d, l) => {
+  const o = sum(l.filter((x) => x.type === 'out'), (x) => x.amount);
+  return html`<div class="day-h"><span>${d.slice(0, 4)}年${md(d).replace('/', '月')}日(${mdw(d).slice(-2, -1)})</span><span class="num">${o ? yen(o) : ''}</span></div>`;
+};
+function DayList({ list, conf, picked, hl }) {
+  return [...groupBy(list, (t) => t.date)].map(([d, l]) => html`<div key=${d} data-day=${d} class=${'day-group' + (picked === d ? ' picked' : '')}>
+    ${dayHead(d, l)}
+    ${l.map((t) => html`<${TxRow} key=${t.id} t=${t} conf=${conf} hl=${hl} />`)}
+  </div>`);
+}
+function PeriodRow({ label, sub, inc, out, onClick, open }) {
+  return html`<button class="row period-row" aria-expanded=${open} onClick=${onClick}>
+    <span class="rm"><span class="rt">${label}</span>${sub && html`<small>${sub}</small>`}</span>
+    <span class="rv">${inc > 0 && html`<b class="num in">${yen(inc)}</b>`}<b class="num out">${yen(out)}</b></span>
+    <span class="chev">${open === undefined ? '›' : open ? '⌃' : '⌄'}</span></button>`;
+}
+
+// 見方を覚えておく(詳細を見て戻ってきたときのため)
+const memory = { view: 'cal', key: null };
 
 export function Records() {
   const app = useApp();
   const conf = getConf();
   const list = txs();
-  const [key, setKey] = useState(periodKeyOf(today(), conf.startDay));
+  const curKey = periodKeyOf(today(), conf.startDay);
+  const [view, setViewS] = useState(memory.view);
+  const [key, setKeyS] = useState(memory.key || curKey);
+  const setView = (v) => { memory.view = v; setViewS(v); };
+  const setKey = (k) => { memory.key = k; setKeyS(k); setSel(null); setWeek(null); };
+  const [year, setYear] = useState(+(memory.key || curKey).slice(0, 4));
   const [sel, setSel] = useState(null);
+  const [week, setWeek] = useState(null);
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
   const [searchOn, setSearchOn] = useState(false);
   const s = summary(list, key, conf);
-  const isCur = key === periodKeyOf(today(), conf.startDay);
-  const tips = useMemo(() => insights(list, conf), [S.getVersion()]);
-  const todo = tips.filter((x) => x.level === 'todo');
+  const isCur = key === curKey;
+  const todo = useMemo(() => insights(list, conf).filter((x) => x.level === 'todo'), [S.getVersion()]);
 
   const days = [];
   for (let d = s.start; d <= s.end; d = addDays(d, 1)) days.push(d);
@@ -39,79 +75,88 @@ export function Records() {
   const outOf = (d) => sum((byDay.get(d) || []).filter((t) => t.type === 'out'), (t) => t.amount);
   const inOf = (d) => sum((byDay.get(d) || []).filter((t) => t.type === 'in'), (t) => t.amount);
   const lead = (parseD(s.start).getDay() + 6) % 7; // 月曜はじまり
-  const ups = useMemo(() => upcoming(62), [list.length]);
-  const upBy = groupBy(ups, (u) => u.date);
+  const upBy = groupBy(useMemo(() => upcoming(62), [S.getVersion()]), (u) => u.date);
   const t0 = today();
 
   const searching = q.trim() || cat;
   const found = useMemo(() => {
     if (!searching) return [];
     const f = fold(q);
-    return list.filter((t) => (!cat || t.cat === cat) && (!f || fold(`${t.memo} ${t.cat} ${t.amount} ${itemText(t)}`).includes(f))).slice(0, 300);
-  }, [q, cat, list.length]);
-  const shown = searching ? found : s.list;
+    return list.filter((t) => (!cat || t.cat === cat) && (!f || fold(`${t.memo} ${t.cat} ${t.amount} ${t.note || ''} ${(t.tags || []).join(' ')} ${itemText(t)}`).includes(f)));
+  }, [q, cat, S.getVersion()]);
   const dlistRef = useRef(null);
   // 日付を押すと、下の一覧のその日へ移る
   const pickDay = (d) => {
     const next = sel === d ? null : d;
     setSel(next);
-    if (!next) return;
-    requestAnimationFrame(() => {
-      const el = dlistRef.current?.querySelector(`[data-day="${next}"]`) || dlistRef.current;
-      el && el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+    if (!next || !byDay.get(next)) return;
+    requestAnimationFrame(() => dlistRef.current?.querySelector(`[data-day="${next}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   };
-  const grouped = [...groupBy(shown, (t) => t.date)];
 
-  // 予算(あと使える額)
+  // 週ごと(月曜はじまり)
+  const weeks = [];
+  for (const d of days) {
+    if (!weeks.length || (parseD(d).getDay() + 6) % 7 === 0) weeks.push([]);
+    weeks[weeks.length - 1].push(d);
+  }
+  // 月ごと
+  const months = view === 'month' ? Array.from({ length: 12 }, (_, i) => summary(list, `${year}-${String(i + 1).padStart(2, '0')}`, conf)) : [];
+
   const budget = conf.budget || 0;
-  const total = (parseD(s.end) - parseD(s.start)) / 864e5 + 1;
-  const elapsed = isCur ? (parseD(t0) - parseD(s.start)) / 864e5 + 1 : total;
   const left = budget - s.out;
-  const daysLeft = Math.max(1, total - elapsed + 1);
 
   return html`<div class="page records">
-    <header class="bar"><span class="bar-l"></span><h1>カレンダー</h1><button class="icon-btn" onClick=${() => { setSearchOn(!searchOn); if (searchOn) { setQ(''); setCat(''); } }} aria-label="さがす">${searchOn ? '✕' : '🔍'}</button></header>
+    <header class="bar"><span class="bar-l"></span>${searching || searchOn ? html`<h1>さがす</h1>` : html`<${Seg} value=${view} onChange=${(v) => { setView(v); setYear(+key.slice(0, 4)); }} options=${[{ v: 'cal', label: 'カレンダー' }, { v: 'week', label: '週' }, { v: 'month', label: '月' }]} />`}
+      <button class="icon-btn" onClick=${() => { setSearchOn(!searchOn); if (searchOn) { setQ(''); setCat(''); } }} aria-label=${searchOn ? 'さがすのをやめる' : 'さがす'}><${Icon} k=${searchOn ? 'close' : 'search'} size="20" /></button></header>
     ${searchOn && html`<div class="search">
-      <input type="search" placeholder="メモ・品名・カテゴリ・金額" value=${q} onChange=${(e) => setQ(e.target.value)} />
+      <input type="search" autoFocus placeholder="内容・お店・タグ・品名・金額" value=${q} onChange=${(e) => setQ(e.target.value)} />
       <select value=${cat} onChange=${(e) => setCat(e.target.value)} aria-label="カテゴリでしぼる">
         <option value="">すべて</option>
-        ${[...catList('out', conf), ...catList('in', conf)].map((c) => html`<option key=${c.id} value=${c.id}>${c.icon} ${c.id}</option>`)}
+        ${[...catList('out', conf), ...catList('in', conf)].map((c) => html`<option key=${c.id} value=${c.id}>${c.id}</option>`)}
       </select>
     </div>`}
-    <${MonthPill} s=${s} onPrev=${() => { setKey(addMonths(key, -1)); setSel(null); }} onNext=${() => { setKey(addMonths(key, 1)); setSel(null); }} onToday=${() => { setKey(periodKeyOf(today(), conf.startDay)); setSel(null); }} />
-    ${!searching && html`<div class="sum3"><div><span>収入</span><b class="num in">${yen(s.in)}</b></div><div><span>支出</span><b class="num out">${yen(s.out)}</b></div><div><span>合計</span><b class=${'num ' + (s.in - s.out >= 0 ? 'in' : 'out')}>${yen(s.in - s.out, true)}</b></div></div>`}
-    ${!searching && s.inv > 0 && html`<div class="inv-line">投資へ <b class="num inv">${yen(s.inv)}</b>(支出にはふくめていません)</div>`}
-    ${!searching && budget > 0 && html`<div class=${'budget-strip' + (left < 0 ? ' over' : '')}><span>${isCur ? '今月あと使える' : '予算の残り'}</span><b class="num">${yen(left)}</b>${isCur && left > 0 ? html`<small>1日 ${yen(left / daysLeft)}・残り${Math.round(daysLeft)}日</small>` : left < 0 ? html`<small>予算オーバー</small>` : null}</div>`}
-    ${!searching && todo.length > 0 && html`<button class="todo-strip" onClick=${() => (todo[0].tx ? app.edit(S.getOne(todo[0].tx)) : app.go(todo[0].go || 'recs'))}>📝 確認してほしいこと ${todo.length}件<span class="chev">›</span></button>`}
-    ${!searching && html`<div class="cal">
-      <div class="cal-grid head">${WEEK.map((w, i) => html`<span key=${w} class=${i === 6 ? 'sun' : i === 5 ? 'sat' : ''}>${w}</span>`)}</div>
-      <div class="cal-grid body">
-        ${Array.from({ length: lead }, (_, i) => html`<span key=${'b' + i} class="cd blank"></span>`)}
-        ${days.map((d) => {
-          const o = outOf(d), inc = inOf(d);
-          const fut = d > t0;
-          const plan = upBy.get(d);
-          const dow = (parseD(d).getDay() + 6) % 7;
-          return html`<button key=${d} class=${'cd' + (d === t0 ? ' today' : '') + (sel === d ? ' sel' : '') + (fut ? ' fut' : '')} onClick=${() => pickDay(d)}>
-            <span class=${'cdn' + (dow === 6 ? ' sun' : dow === 5 ? ' sat' : '')}>${+d.slice(8)}</span>
-            ${inc > 0 && html`<span class="cdi num">${inc.toLocaleString('ja-JP')}円</span>`}
-            ${o > 0 && html`<span class="cdo num">${o.toLocaleString('ja-JP')}円</span>`}
-            ${fut && plan && html`<span class="cdp" title=${plan.map((p) => p.rec?.name || p.plan?.name).join('・')}>●</span>`}
-          </button>`;
-        })}
-        ${Array.from({ length: (7 - ((lead + days.length) % 7)) % 7 }, (_, i) => html`<span key=${'e' + i} class="cd blank"></span>`)}
-      </div>
-    </div>`}
-    ${sel && !searching && html`<div class="sel-bar"><b>${mdw(sel)}</b><span>支出 ${yen(outOf(sel))}</span><button class="chip" onClick=${() => app.edit(null, { date: sel })}>＋ この日に記録</button><button class="icon-btn" onClick=${() => setSel(null)}>✕</button></div>`}
-    ${sel && !searching && (upBy.get(sel) || []).map((u, i) => html`<div key=${i} class="row plan"><span class="ri">🗓️</span><span class="rm"><span class="rt">${u.rec?.name || u.plan?.name + ' 積立'}</span><small>予定</small></span><b class="num">${yen(u.amount)}</b></div>`)}
-    <div class="dlist" ref=${dlistRef}>
-      ${grouped.length ? grouped.map(([d, l]) => html`<div key=${d} data-day=${d} class=${'day-group' + (sel === d && !searching ? ' picked' : '')}>
-        <div class="day-h"><span>${d.slice(0, 4)}年${md(d).replace('/', '月')}日(${mdw(d).slice(-2, -1)})</span><span class="num">${sum(l.filter((x) => x.type === 'out'), (x) => x.amount) ? yen(sum(l.filter((x) => x.type === 'out'), (x) => x.amount)) : ''}</span></div>
-        ${l.map((t) => html`<${TxRow} key=${t.id} t=${t} conf=${conf} showDate=${false} hl=${q.trim()} openItems=${!!q.trim() && (t.items || []).some((x) => fold(`${x.n} ${x.tag || ''}`).includes(fold(q)))} />`)}
-      </div>`) : html`<${Empty} icon="🗒️" title=${searching ? '見つかりませんでした' : 'この月の記録はまだありません'} body=${searching ? '' : '下の「入力」から記録できます'} />`}
-      ${searching && found.length > 0 && html`<div class="found-sum">${found.length}件・支出 ${yen(sum(found.filter((t) => t.type === 'out'), (t) => t.amount))}</div>`}
-    </div>
+    ${searchOn ? html`
+      ${searching ? html`<div class="found-sum">${found.length}件・支出 ${yen(sum(found.filter((t) => t.type === 'out'), (t) => t.amount))}</div>
+        <div class="dlist"><${DayList} list=${found.slice(0, 300)} conf=${conf} hl=${q.trim()} /></div>` : html`<${Empty} title="言葉かカテゴリでさがせます" />`}`
+    : view === 'month' ? html`
+      <${YearPill} year=${year} onChange=${setYear} />
+      <${Sum3} inc=${sum(months, (m) => m.in)} out=${sum(months, (m) => m.out)} />
+      <div class="sec flush">${months.filter((m) => m.in || m.out).reverse().map((m) => html`<${PeriodRow} key=${m.key} label=${`${+m.key.slice(5)}月`} sub=${`合計 ${yen(m.in - m.out, true)}`} inc=${m.in} out=${m.out} onClick=${() => { setKey(m.key); setView('cal'); window.scrollTo(0, 0); }} />`)}</div>
+      ${!months.some((m) => m.in || m.out) && html`<${Empty} title="この年の記録はありません" />`}`
+    : html`
+      <${MonthPill} s=${s} onPrev=${() => setKey(addMonths(key, -1))} onNext=${() => setKey(addMonths(key, 1))} onToday=${() => setKey(curKey)} />
+      ${view === 'cal' && html`<div class="cal">
+        <div class="cal-grid head">${WEEK.map((w, i) => html`<span key=${w} class=${i === 6 ? 'sun' : i === 5 ? 'sat' : ''}>${w}</span>`)}</div>
+        <div class="cal-grid">
+          ${Array.from({ length: lead }, (_, i) => html`<span key=${'b' + i} class="cd blank"></span>`)}
+          ${days.map((d) => {
+            const o = outOf(d), inc = inOf(d);
+            const dow = (parseD(d).getDay() + 6) % 7;
+            return html`<button key=${d} class=${'cd' + (d === t0 ? ' today' : '') + (sel === d ? ' sel' : '')} aria-label=${`${md(d)} 支出${o}円 収入${inc}円`} onClick=${() => pickDay(d)}>
+              <span class=${'cdn' + (dow === 6 ? ' sun' : dow === 5 ? ' sat' : '')}>${+d.slice(8)}</span>
+              ${inc > 0 && html`<span class="cdi num">${inc.toLocaleString('ja-JP')}</span>`}
+              ${o > 0 && html`<span class="cdo num">${o.toLocaleString('ja-JP')}</span>`}
+              ${d > t0 && upBy.get(d) && html`<span class="cdp" title="支払いの予定"></span>`}
+            </button>`;
+          })}
+          ${Array.from({ length: (7 - ((lead + days.length) % 7)) % 7 }, (_, i) => html`<span key=${'e' + i} class="cd blank"></span>`)}
+        </div>
+      </div>`}
+      <${Sum3} inc=${s.in} out=${s.out} />
+      ${budget > 0 && html`<button class=${'strip' + (left < 0 ? ' warn' : '')} onClick=${() => app.go('budget')}><span>${left >= 0 ? (isCur ? '今月あと使える' : '予算の残り') : '予算を超えた額'}<b class="num">${yen(Math.abs(left))}</b></span><span class="chev">›</span></button>`}
+      ${todo.length > 0 && html`<button class="strip warn" onClick=${() => (todo[0].tx ? app.edit(S.getOne(todo[0].tx)) : app.go(todo[0].go || 'recs'))}><span>確認してほしいこと ${todo.length}件</span><span class="chev">›</span></button>`}
+      ${view === 'week' ? html`<div class="sec flush">${weeks.map((w, i) => {
+        const l = s.list.filter((t) => t.date >= w[0] && t.date <= w[w.length - 1]);
+        const open = week === i;
+        return html`<div key=${w[0]}><${PeriodRow} label=${`${md(w[0])} 〜 ${md(w[w.length - 1])}`} sub=${`${l.length}件`} open=${open}
+          inc=${sum(l.filter((t) => t.type === 'in'), (t) => t.amount)} out=${sum(l.filter((t) => t.type === 'out'), (t) => t.amount)} onClick=${() => setWeek(open ? null : i)} />
+          ${open && html`<div class="period-body"><${DayList} list=${l} conf=${conf} /></div>`}</div>`;
+      })}</div>`
+      : html`
+        ${sel && html`<div class="sel-bar"><b>${mdw(sel)}</b><span>${byDay.get(sel) ? `支出 ${yen(outOf(sel))}` : '記録なし'}</span><button class="chip small" onClick=${() => app.edit(null, { date: sel })}>＋ この日に記録</button></div>`}
+        ${sel && (upBy.get(sel) || []).map((u, i) => html`<div key=${i} class="row plan"><span class="rm"><span class="rt">${u.rec?.name || u.plan?.name + ' 積立'}</span><small>支払いの予定</small></span><b class="num">${yen(u.amount)}</b></div>`)}
+        <div class="dlist" ref=${dlistRef}><${DayList} list=${s.list} conf=${conf} picked=${sel} /></div>
+        ${!s.list.length && html`<${Empty} title="この月の記録はまだありません" body="下の「入力」から記録できます" />`}`}`}
     <div class="bottom-space"></div>
   </div>`;
 }

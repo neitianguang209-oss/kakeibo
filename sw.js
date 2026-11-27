@@ -1,6 +1,6 @@
 // Service Worker(手書き・ビルド不要)。全パスは相対(GitHub Pages のサブパス配信で壊れないように)。
 // アプリを更新して公開するたび、毎回 CACHE_NAME の数字を上げる(上げないと古い画面が出続ける)。
-const CACHE_NAME = 'kakeibo-v11';
+const CACHE_NAME = 'kakeibo-v12';
 const APP_SHELL = [
   './',
   './index.html',
@@ -10,7 +10,7 @@ const APP_SHELL = [
   './src/api.js',
   './src/util.js',
   './src/store.js',
-  './src/calc.js', './src/quotes.js', './src/charts.js', './src/ui.js', './src/input.js', './src/home.js', './src/records.js', './src/report.js', './src/assets.js', './src/settings.js', './src/items.js', './src/portfolio.js',
+  './src/calc.js', './src/quotes.js', './src/charts.js', './src/ui.js', './src/input.js', './src/home.js', './src/records.js', './src/report.js', './src/assets.js', './src/settings.js', './src/items.js', './src/portfolio.js', './src/budget.js', './src/icons.js', './src/detail.js', './src/wealth.js',
   './icons/icon-192.png',
   './icons/icon-180.png',
   './icons/favicon-32.png',

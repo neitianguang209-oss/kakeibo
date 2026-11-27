@@ -126,3 +126,27 @@ export async function loadProfiles(symbols) {
   } catch { /* 次の機会に */ }
   return pr;
 }
+
+// ---- 配当の実績(1株あたり。1日ごとに取り直す)。{ sym: { events: [[ts, 金額]], currency, _at } }
+const LD = 'kakeibo:dividends';
+let divs = null;
+export function getDividends() {
+  if (!divs) divs = lsJson(LD, {});
+  return divs;
+}
+let divBusy = false;
+export async function loadDividends(symbols) {
+  const d = getDividends();
+  if (!getKey() || divBusy) return d;
+  const need = [...new Set(symbols)].filter((s) => s && !/^\^|=X$/.test(s) && !/^[0-9A-Z]{8}$/.test(s) && (!d[s] || Date.now() - (d[s]._at || 0) > 24 * 3600e3)).slice(0, 30);
+  if (!need.length) return d;
+  divBusy = true;
+  try {
+    const r = await fn('dividends', { symbols: need }, 40000, 'kakeibo-div');
+    for (const [s, v] of Object.entries(r || {})) if (v && !v.error) d[s] = { ...v, _at: Date.now() };
+    try { lsSet(LD, JSON.stringify(d)); } catch { /* いっぱい */ }
+    emit();
+  } catch { /* 次の機会に */ }
+  divBusy = false;
+  return d;
+}

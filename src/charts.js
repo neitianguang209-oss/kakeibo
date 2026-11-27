@@ -4,7 +4,7 @@ import htm from 'htm';
 const html = htm.bind(React.createElement);
 
 // ---- 円グラフ(ドーナツ)。中央に合計、押したところの内訳
-export function Donut({ data, size = 200, thick = 26, center, sub, onPick, picked }) {
+export function Donut({ data, size = 200, thick = 26, center, sub, onPick, picked, labels }) {
   const total = data.reduce((s, d) => s + d.value, 0) || 1;
   const r = (size - thick) / 2;
   const c = size / 2;
@@ -12,6 +12,13 @@ export function Donut({ data, size = 200, thick = 26, center, sub, onPick, picke
   const gap = data.length > 1 ? 2 : 0; // 隣とのすき間(面の色)
   let acc = 0;
   const pick = picked != null ? data.find((d) => d.key === picked) : null;
+  // 大きい扇には名前を書く(凡例を行き来しなくてよいように)
+  let sofar = 0;
+  const names = !labels ? [] : data.map((d) => {
+    const mid = ((sofar + d.value / 2) / total) * 2 * Math.PI - Math.PI / 2;
+    sofar += d.value;
+    return d.value / total >= 0.09 && d.label.length <= 6 ? { key: d.key, label: d.label, x: c + r * Math.cos(mid), y: c + r * Math.sin(mid) } : null;
+  }).filter(Boolean);
   return html`<div class="donut" style=${{ width: size, height: size }}>
     <svg viewBox="0 0 ${size} ${size}" width=${size} height=${size} role="img" aria-label="内訳の円グラフ">
       <circle cx=${c} cy=${c} r=${r} fill="none" stroke="var(--track)" stroke-width=${thick} />
@@ -26,6 +33,7 @@ export function Donut({ data, size = 200, thick = 26, center, sub, onPick, picke
           style=${{ opacity: dim ? 0.28 : 1, transition: 'opacity .2s, stroke-width .2s', cursor: 'pointer' }}
           onClick=${() => onPick && onPick(pick?.key === d.key ? null : d.key)}><title>${d.label}</title></circle>`;
       })}
+      ${names.map((n) => html`<text key=${'t' + n.key} x=${n.x} y=${n.y + 4} class="donut-label">${n.label}</text>`)}
     </svg>
     <div class="donut-center">
       ${pick
@@ -98,7 +106,7 @@ export function LineChart({ xs, series, height = 200, fmtY = (v) => v, fmtX = (t
       ${ticks.map((t) => html`<g key=${t}><line x1=${padL} x2=${W - padR} y1=${Y(t)} y2=${Y(t)} class="grid" /><text x=${W - padR + 6} y=${Y(t) + 3.5} class="tick">${fmtY(t)}</text></g>`)}
       ${baseline != null && html`<line x1=${padL} x2=${W - padR} y1=${Y(baseline)} y2=${Y(baseline)} class="base" />`}
       ${xt.map((i) => html`<text key=${'x' + i} x=${X(i)} y=${H - 6} class="tick" text-anchor=${i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}>${fmtX(xs[i])}</text>`)}
-      ${series.map((s) => s.area && html`<path key=${'a' + s.key} d=${path(s.values) + `L${X(n - 1)} ${Y(y0)}L${X(s.values.findIndex((v) => v != null))} ${Y(y0)}Z`} fill=${s.color} opacity="0.10" />`)}
+      ${series.map((s) => s.area && html`<path key=${'a' + s.key} d=${path(s.values) + `L${X(n - 1)} ${Y(y0)}L${X(s.values.findIndex((v) => v != null))} ${Y(y0)}Z`} fill=${s.solid ? `color-mix(in srgb, ${s.color} 38%, var(--card))` : s.color} opacity=${s.solid ? '1' : '0.10'} />`)}
       ${series.map((s) => html`<path key=${s.key} d=${path(s.values)} fill="none" stroke=${s.color} stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray=${s.dash ? '4 4' : null} />`)}
       ${markers.map((m, k) => {
         const s = series.find((x) => x.key === (m.series || series[0].key));
@@ -118,6 +126,17 @@ export function LineChart({ xs, series, height = 200, fmtY = (v) => v, fmtX = (t
     </div>`}
     </div>
   </div>`;
+}
+
+// ---- 積み上げ面(資産の中身がどう増えたか)。下の系列から順に積む。なぞると、それぞれの額と合計
+export function StackChart({ xs, series, height = 200, fmtY, fmtX }) {
+  const acc = xs.map(() => 0);
+  const layers = series.map((s) => {
+    const values = s.values.map((v, i) => (acc[i] += v || 0));
+    return { ...s, values: [...values], own: s.values, area: true, solid: true };
+  }).reverse(); // 上の層から描くと、下の層が手前に重なる
+  const tip = (i) => html`<${React.Fragment}>${series.slice().reverse().map((s) => html`<div key=${s.key} class="ctip-r"><i style=${{ background: s.color }}></i>${s.label}<b class="num">${fmtY(s.values[i] || 0, true)}</b></div>`)}<div class="ctip-r">合計<b class="num">${fmtY(acc[i], true)}</b></div></${React.Fragment}>`;
+  return html`<${LineChart} xs=${xs} series=${layers} height=${height} fmtY=${fmtY} fmtX=${fmtX} fmtTip=${tip} zero legend=${false} />`;
 }
 
 // ---- 棒(月ごとの収入と支出)。2本並べ、すき間をあける

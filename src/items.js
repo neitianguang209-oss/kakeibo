@@ -1,7 +1,7 @@
 // 品目の内訳(何を買ったか): 1件の支出に items = [{ n: 品名, a: 金額, q: 個数, tag: 品目タグ }] を持たせて、開いて確認・タグや言葉でさがす
 import React, { useState, useMemo } from 'react';
-import { html, useApp, Sheet, Seg, Empty } from './ui.js';
-import { yen, sum, fold, today, addDays, md, catInfo, catList, groupBy } from './util.js';
+import { html, useApp, Sheet, Seg, Empty, PageHead } from './ui.js';
+import { yen, sum, fold, today, addDays, md, catList, groupBy } from './util.js';
 import { txs, getConf } from './calc.js';
 
 export const ITEM_TAGS = [
@@ -135,56 +135,24 @@ export function ItemsPage({ initialTag }) {
     return { k, n: latest.n, tag: latest.tag, times: sum(l, (x) => x.q || 1), a: sum(l, (x) => x.a), last: unit(latest), low: Math.min(...l.map(unit)), date: latest.date };
   }).sort((a, b) => b.a - a.a) : [];
   return html`<div class="page itemspage">
-    <header class="top"><button class="icon-btn" onClick=${() => history.back()} aria-label="もどる">‹</button><h1>買ったもの</h1><span class="bar-r"></span></header>
+    <${PageHead} title="買ったもの" />
     <${Seg} small value=${span} onChange=${setSpan} options=${SPANS} />
     <div class="search">
       <input type="search" placeholder="品名・タグ・お店でさがす" value=${q} onChange=${(e) => setQ(e.target.value)} />
-      <select value=${cat} onChange=${(e) => setCat(e.target.value)} aria-label="カテゴリでしぼる"><option value="">すべて</option>${catList('out', conf).map((c) => html`<option key=${c.id} value=${c.id}>${c.icon} ${c.id}</option>`)}</select>
+      <select value=${cat} onChange=${(e) => setCat(e.target.value)} aria-label="カテゴリでしぼる"><option value="">すべて</option>${catList('out', conf).map((c) => html`<option key=${c.id} value=${c.id}>${c.id}</option>`)}</select>
     </div>
     ${tags.length > 0 && html`<div class="row-chips wrap">${tags.map((g) => html`<button key=${g.k} class=${'chip small' + (tag === g.k ? ' on' : '')} onClick=${() => setTag(tag === g.k ? '' : g.k)}>${tagIcon(g.k)} ${g.k} <small class="num">${yen(g.a)}</small></button>`)}</div>`}
     ${hit.length > 0 ? html`
       <div class="it-sum"><span>${hit.length}点</span><b class="num">${yen(sum(hit, (x) => x.a))}</b></div>
       <${Seg} small value=${view} onChange=${setView} options=${[{ v: 'new', label: '新しい順' }, { v: 'name', label: '品名ごと' }]} />
       <section class="card">
-        ${view === 'new' ? hit.slice(0, limit).map((x) => html`<button key=${x.key} class="it-line tap" onClick=${() => app.edit(x.t)}>
-            <span class="it-i">${tagIcon(x.tag)}</span><span class="it-n">${x.n}${x.q ? ` ×${x.q}` : ''}<small>${+x.date.slice(2, 4)}/${md(x.date)}・${catInfo(x.cat, conf).icon}${x.cat}${x.store ? '・' + x.store : ''}</small></span><b class="num">${yen(x.a)}</b></button>`)
+        ${view === 'new' ? hit.slice(0, limit).map((x) => html`<button key=${x.key} class="it-line tap" onClick=${() => app.open('detail', x.t.id)}>
+            <span class="it-i">${tagIcon(x.tag)}</span><span class="it-n">${x.n}${x.q ? ` ×${x.q}` : ''}<small>${+x.date.slice(2, 4)}/${md(x.date)}・${x.cat}${x.store ? '・' + x.store : ''}</small></span><b class="num">${yen(x.a)}</b></button>`)
         : names.slice(0, limit).map((x) => html`<div key=${x.k} class="it-line">
             <span class="it-i">${tagIcon(x.tag)}</span><span class="it-n">${x.n}<small>${x.times}個・前回 ${yen(x.last)}(${md(x.date)})${x.low < x.last ? `・いちばん安いとき ${yen(x.low)}` : ''}</small></span><b class="num">${yen(x.a)}</b></div>`)}
         ${(view === 'new' ? hit.length : names.length) > limit && html`<button class="text-btn" onClick=${() => setLimit(limit + 200)}>もっと見る</button>`}
       </section>`
-    : html`<${Empty} icon="🧾" title=${everything.length ? '見つかりませんでした' : '内訳のある記録はまだありません'} body=${everything.length ? '期間やタグを変えてみてください。' : '「入力」の📷レシートで読むか、記録するときに「内訳」を足すと、ここに買ったものが並びます。'} />`}
+    : html`<${Empty} title=${everything.length ? '見つかりませんでした' : '内訳のある記録はまだありません'} body=${everything.length ? '期間やタグを変えてみてください。' : '「入力」右上のカメラでレシートを読むか、「詳しく」から内訳を足すと、ここに買ったものが並びます。'} />`}
     <div class="bottom-space"></div>
-  </div>`;
-}
-
-// ---- レポート: 期間の中で「買ったもの」のタグ別
-export function ItemsCard({ list }) {
-  const app = useApp();
-  const items = allItems(list);
-  const tags = [...groupBy(items, (x) => x.tag)].map(([k, l]) => ({ k, n: l.length, a: sum(l, (x) => x.a) })).sort((a, b) => b.a - a.a);
-  const max = tags[0]?.a || 1;
-  const outs = list.filter((t) => t.type === 'out');
-  const withItems = outs.filter((t) => t.items?.length);
-  return html`<section class="card">
-    <div class="card-h"><h3>🧾 買ったもの</h3><button class="text-btn" onClick=${() => app.go('items')}>さがす ›</button></div>
-    ${tags.length ? html`${tags.slice(0, 8).map((g) => html`<button key=${g.k} class="tag-row" onClick=${() => app.go('items/' + encodeURIComponent(g.k))}>
-        <span class="tr-top"><span>${tagIcon(g.k)} ${g.k}<small>${g.n}点</small></span><b class="num">${yen(g.a)}</b></span>
-        <span class="share"><i style=${{ width: Math.max(2, (g.a / max) * 100) + '%', background: 'var(--accent)' }}></i></span></button>`)}
-      <p class="fine">この期間の支出 ${outs.length}件のうち、内訳があるのは ${withItems.length}件(${yen(sum(withItems, (t) => t.amount))})です。</p>`
-    : html`<p class="muted">この期間は内訳のある記録がまだありません。レシートを読むか、記録するときに「内訳」を足すと、何を買ったかがここに出ます。</p>`}
-  </section>`;
-}
-
-// ---- レポートでカテゴリを押したときの中身(買ったもの)
-export function CatContents({ list, cat, type }) {
-  const app = useApp();
-  const [limit, setLimit] = useState(20);
-  const rows = list.filter((t) => t.type === type && (t.cat || (type === 'in' ? 'その他収入' : 'その他')) === cat);
-  return html`<div class="cat-contents">
-    ${rows.slice(0, limit).map((t) => html`<div key=${t.id} class="cc-tx">
-      <button class="cc-head" onClick=${() => app.edit(t)}><span class="cc-d">${md(t.date)}</span><span class="cc-m">${t.memo || t.store || '(メモなし)'}</span><b class="num">${yen(t.amount)}</b></button>
-      ${t.items?.length ? html`<${ItemLines} t=${t} />` : null}
-    </div>`)}
-    ${rows.length > limit && html`<button class="text-btn" onClick=${() => setLimit(limit + 50)}>もっと見る(あと${rows.length - limit}件)</button>`}
   </div>`;
 }

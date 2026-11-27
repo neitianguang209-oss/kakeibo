@@ -260,7 +260,15 @@ export function costAt(symbol, dateStr, quotes, fx) {
   return cost;
 }
 
-// 資産の推移(日付ごと: 手元のお金・投資の評価額・投資した元本)
+// ---- 自分で足した資産(別の貯金口座・ポイントなど)。残高を直すたびに、その日の値を覚える
+export function assetValueAt(a, date) {
+  let v = 0;
+  for (const [d, x] of a.history || []) if (d <= date) v = +x;
+  return v;
+}
+export const assetsAt = (group, date = today()) => sum(S.all('asset').filter((a) => (a.group || 'cash') === group), (a) => assetValueAt(a, date));
+
+// 資産の推移(日付ごと: 現金・預金 / 投資信託 / 個別株 / その他)
 export function assetSeries(list, conf, quotes, fx, days = 365) {
   const t = today();
   const syms = [...new Set([...S.all('lot').map((l) => l.symbol), ...S.all('plan').map((p) => p.symbol)])];
@@ -268,21 +276,23 @@ export function assetSeries(list, conf, quotes, fx, days = 365) {
   const out = [];
   for (let i = days; i >= 0; i -= step) {
     const d = addDays(t, -i);
-    let inv = 0, cost = 0;
+    let inv = 0, cost = 0, fund = 0;
     for (const s of syms) {
       const qty = qtyAt(s, d, quotes);
       if (!qty) continue;
       const q = quotes[s];
       const px = priceAt(q, d);
       const rate = q?.currency === 'USD' ? fx || 150 : 1;
-      if (px != null) inv += (qty * px * rate) / unitOf(s);
+      if (px != null) {
+        const v = (qty * px * rate) / unitOf(s);
+        inv += v;
+        if (isFundSym(s)) fund += v;
+      }
       cost += costAt(s, d, quotes, fx);
     }
     const cash = cashAt(list, conf, d);
-    out.push({ date: d, ts: parseD(d).getTime(), cash: cash ?? 0, inv, cost, total: (cash ?? 0) + inv });
-  }
-  if (out.at(-1)?.date !== t) {
-    // 最後はいつも今日
+    const saving = assetsAt('cash', d), other = assetsAt('other', d);
+    out.push({ date: d, ts: parseD(d).getTime(), cash: (cash ?? 0) + saving, fund, stock: inv - fund, other, inv, cost, total: (cash ?? 0) + saving + inv + other });
   }
   return out;
 }

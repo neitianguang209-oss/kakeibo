@@ -1,10 +1,11 @@
 // 資産: 総資産の推移・保有株(買った値段と今)・積立NISA・半導体指数との比較・ウォッチ
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { html, useApp, Seg, Sheet, Empty, Field, NumInput } from './ui.js';
+import { html, useApp, Seg, Sheet, Empty, Field, NumInput, PageHead } from './ui.js';
+import { Icon } from './icons.js';
+import { HoldingCard } from './wealth.js';
 import { LineChart, Spark } from './charts.js';
-import { yen, pm, pct, tone, today, addDays, addMonths, periodKeyOf, parseD, md, short, uid, sum, ym, jpDay } from './util.js';
-import { txs, getConf, summary, cashAt, positions, assetSeries, holdingSeries, planBuys, priceAt, unitOf, isFundSym } from './calc.js';
-import { Holdings } from './portfolio.js';
+import { yen, pm, pct, tone, today, addDays, addMonths, periodKeyOf, parseD, short, uid, sum, ym, jpDay } from './util.js';
+import { txs, getConf, summary, cashAt, positions, holdingSeries, planBuys, priceAt, unitOf, isFundSym } from './calc.js';
 import { getQuotes, loadQuotes, getEarnings, loadEarnings, PRESET_WATCH, PRESET_FUNDS, PRESET_SEMI } from './quotes.js';
 import * as S from './store.js';
 import { fn, getKey } from './api.js';
@@ -51,76 +52,6 @@ const fmtX = (t, full) => {
   const d = new Date(t);
   return full ? `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}` : `${d.getMonth() + 1}/${d.getDate()}`;
 };
-
-export function Assets({ qv }) {
-  const app = useApp();
-  const conf = getConf();
-  const list = txs();
-  const [range, setRange] = useState(182);
-  const [busy, setBusy] = useState(false);
-  const q = quotesForCalc();
-  const fx = q['JPY=X']?.cur;
-  const pos = positions(q, fx);
-  const open = pos.filter((p) => !p.closed);
-  const inv = sum(open, (p) => p.value || 0);
-  const cost = sum(open, (p) => p.cost || 0);
-  const day = sum(open, (p) => p.dayChange || 0);
-  const realized = sum(pos, (p) => p.realized || 0);
-  const cash = cashAt(list, conf);
-  const series = useMemo(() => assetSeries(list, conf, q, fx, range), [S.getVersion(), range, qv, Object.keys(q).length]);
-
-  const reload = async () => {
-    setBusy(true);
-    await refreshQuotes(true);
-    setBusy(false);
-  };
-  useEffect(() => { refreshQuotes(); }, [S.all('lot').length, S.all('plan').length]);
-
-  return html`<div class="page assets">
-    <header class="top"><span class="bar-l"></span><h1>資産</h1><button class=${'icon-btn' + (busy ? ' spin' : '')} onClick=${reload} aria-label="値段を取り直す">↻</button></header>
-    ${!getKey() && html`<div class="note">株価・基準価額を取ってくるには、設定で合言葉を入れてください。</div>`}
-    <section class="card hero">
-      <div class="label">総資産</div>
-      <div class="num hero-num">${yen((cash || 0) + inv)}</div>
-      <div class="asset-split">
-        <div><i style=${{ background: 'var(--c-cash)' }}></i>手元のお金<b class="num">${cash == null ? '未設定' : yen(cash)}</b></div>
-        <div><i style=${{ background: 'var(--c-inv)' }}></i>投資(評価額)<b class="num">${yen(inv)}</b></div>
-      </div>
-      ${open.length > 0 && html`<div class="pl-grid">
-        <div><span>投資した元本</span><b class="num">${yen(cost)}</b></div>
-        <div><span>含み損益</span><b class=${'num ' + tone(inv - cost)}>${pm(inv - cost)}円 <em>${cost ? pct((inv - cost) / cost) : ''}</em></b></div>
-        <div><span>前日比</span><b class=${'num ' + tone(day)}>${pm(day)}円</b></div>
-        ${realized ? html`<div><span>売って確定した損益</span><b class=${'num ' + tone(realized)}>${pm(realized)}円</b></div>` : null}
-      </div>`}
-      <${Seg} small value=${range} onChange=${setRange} options=${RANGES} />
-      <${LineChart} xs=${series.map((x) => x.ts)} height=${190} fmtX=${fmtX}
-        fmtY=${(v, full) => (full ? yen(v) : short(v))}
-        series=${[
-          { key: 'total', label: '総資産', color: 'var(--s1)', values: series.map((x) => x.total), area: true },
-          ...(open.length ? [{ key: 'inv', label: '投資の評価額', color: 'var(--c-inv)', values: series.map((x) => x.inv) }, { key: 'cost', label: '投資した元本', color: 'var(--ink3)', values: series.map((x) => x.cost), dash: true }] : []),
-        ]} />
-      ${cash == null && html`<button class="text-btn" onClick=${() => app.open('cash')}>手元のお金(口座・財布の残高)を入れる ›</button>`}
-      ${cash != null && html`<button class="text-btn" onClick=${() => app.open('cash')}>残高を実際に合わせる ›</button>`}
-    </section>
-
-
-    <${Holdings} pos=${pos} q=${q} />
-
-    <${Breakdown} cash=${cash} open=${open} inv=${inv} list=${list} />
-
-    <${NisaCard} q=${q} open=${open} />
-
-    <${GoalCard} total=${(cash || 0) + inv} list=${list} conf=${conf} />
-
-    <${EarningsCard} open=${open} />
-
-    <${Watch} q=${q} />
-
-    <${Compare} open=${open} q=${q} />
-    <p class="fine">値段は Yahoo!ファイナンス・三菱UFJアセットマネジメントの公開データ。株価は約20分遅れ、投信は前営業日の基準価額。積立の口数は積立日の基準価額からの計算(目安)。実際の口数は「口数を合わせる」で直せます。</p>
-    <div class="bottom-space"></div>
-  </div>`;
-}
 
 export function PosRow({ p, q }) {
   const app = useApp();
@@ -194,7 +125,7 @@ function Compare({ open, q }) {
   const last = (v) => [...v].reverse().find((x) => x != null);
   const benchList = [...PRESET_WATCH, ...S.all('watch')].filter((w, i, a) => a.findIndex((x) => x.symbol === w.symbol) === i);
   return html`<section class="card">
-    <div class="card-h"><h3>⚖️ 指数とくらべる</h3>
+    <div class="card-h"><h3>くらべる指数</h3>
       <select class="mini-sel" value=${bench} onChange=${(e) => S.setConf({ bench: e.target.value })} aria-label="くらべる指数">${benchList.map((w) => html`<option key=${w.symbol} value=${w.symbol}>${shortName(w.name)}</option>`)}</select></div>
     <p class="muted small">${range === 30 ? '1か月' : range === 91 ? '3か月' : range === 182 ? '半年' : '1年'}前を100として、どれだけ上がった・下がったか</p>
     <${Seg} small value=${range} onChange=${setRange} options=${RANGES} />
@@ -213,14 +144,14 @@ const NICK = [[/全世界株式\(?オール/, 'オルカン'], [/eMAXIS ?Slim ?�
 export const shortName = (n) => (NICK.find(([re]) => re.test(String(n || '').normalize('NFKC')))?.[1]) || String(n || '').replace(/^PHLX Semiconductor$/, '半導体株指数(SOX)').replace(/^Nikkei 225$/, '日経平均').replace(/^S&P 500$/, 'S&P500').replace(/フィラデルフィア半導体株指数\(SOX\)/, '半導体株指数(SOX)').replace(/ホールディングス$/, 'HD').slice(0, 22);
 
 // ---- 買いたい株・ウォッチ(持っていないけど見ておきたい銘柄・指数)。買いたい値段・株数・メモを持てる
-function Watch({ q }) {
+export function Watch({ q }) {
   const app = useApp();
   const w = S.all('watch');
   const items = w.length ? w : PRESET_WATCH.slice(0, 1);
   useEffect(() => { loadQuotes(items.map((x) => x.symbol), '1y'); loadEarnings(items.map((x) => x.symbol)); }, [w.length]);
   const earn = getEarnings();
   return html`<section class="card">
-    <div class="card-h"><h3>🛒 買いたい株・ウォッチ</h3><button class="text-btn" onClick=${() => app.open('watch')}>＋ 追加</button></div>
+    <div class="card-h"><h3>買いたい株・ウォッチ</h3><button class="text-btn" onClick=${() => app.open('watch')}>＋ 追加</button></div>
     ${!w.length && html`<p class="muted small">買おうと思っている株を入れておくと、今の値段・買いたい値段までの差・決算日がここに並びます。</p>`}
     ${items.map((x) => {
       const d = q[x.symbol] || getQuotes('1y')[x.symbol];
@@ -234,11 +165,11 @@ function Watch({ q }) {
       return html`<div key=${x.symbol} class=${'pos-row watch-row' + (gap != null && gap <= 0 ? ' hit' : '')} onClick=${() => app.go('stock/' + encodeURIComponent(x.symbol))}>
         <span class="pr-main"><b>${shortName(d?.name || x.name)}</b>
           <small>${[x.symbol.replace(/\.T$/, ''), e?.next && earnLabel(e, true), x.memo].filter(Boolean).join('・')}</small>
-          ${tg > 0 && html`<small class="tg">${gap != null && gap <= 0 ? '✅ 買いたい値段になりました' : `買いたい値段 ${usd ? '$' : ''}${tg.toLocaleString()}${gap != null ? `(あと ${pct(-gap, 1).replace('+', '')} 下がったら)` : ''}`}</small>`}
+          ${tg > 0 && html`<small class="tg">${gap != null && gap <= 0 ? '買いたい値段になりました' : `買いたい値段 ${usd ? '$' : ''}${tg.toLocaleString()}${gap != null ? `(あと ${pct(-gap, 1).replace('+', '')} 下がったら)` : ''}`}</small>`}
           ${need && html`<small>${x.qty}株買うと 約${yen(need)}</small>`}</span>
         <${Spark} values=${(d?.points || []).slice(-30).map((p) => p[1])} />
         <span class="pr-val"><b class="num">${d?.cur != null ? (usd ? '$' : '') + d.cur.toLocaleString('ja-JP', { maximumFractionDigits: 2 }) : '…'}</b><small class=${'num ' + tone(ch)}>${ch != null ? pct(ch, 2) : ''}</small></span>
-        ${w.length > 0 && html`<button class="icon-btn" aria-label="直す" onClick=${(ev) => { ev.stopPropagation(); app.open('watch', x); }}>✎</button>`}
+        ${w.length > 0 && html`<button class="icon-btn" aria-label="直す" onClick=${(ev) => { ev.stopPropagation(); app.open('watch', x); }}><${Icon} k="edit" size="18" /></button>`}
       </div>`;
     })}
   </section>`;
@@ -252,37 +183,8 @@ export function acctSplit(p) {
   return held.map(([a, n]) => [a || '口座の指定なし', (p.value * n) / total]);
 }
 
-// ---- 資産の内訳(手元のお金・銘柄ごと・口座ごと)と、まだ登録していない投資
-const PAL = ['var(--s1)', 'var(--s2)', 'var(--s3)', 'var(--s4)', 'var(--c-inv)', 'var(--ink3)'];
-function Breakdown({ cash, open, inv, list }) {
-  const app = useApp();
-  const [by, setBy] = useState('name');
-  const total = (cash || 0) + inv;
-  // 家計簿の「投資へ」のうち、株・投信の登録とつながっていない分
-  const loose = sum(list.filter((t) => t.type === 'inv' && !['lot', 'plan', 'moneynote', 'import'].includes(t.src) && !String(t.id).startsWith('l_')), (t) => t.amount);
-  if (!total && !loose) return null;
-  let parts;
-  if (by === 'name') {
-    const pos = open.filter((p) => p.value > 0).sort((a, b) => b.value - a.value);
-    parts = pos.slice(0, 5).map((p) => ({ k: p.symbol, label: shortName(p.name), v: p.value }));
-    if (pos.length > 5) parts.push({ k: 'other', label: 'そのほか', v: sum(pos.slice(5), (p) => p.value) });
-  } else {
-    const m = new Map();
-    for (const p of open) if (p.value > 0) for (const [a, v] of acctSplit(p)) m.set(a, (m.get(a) || 0) + v);
-    parts = [...m].sort((a, b) => b[1] - a[1]).map(([a, v]) => ({ k: a, label: a, v }));
-  }
-  parts = [...(cash ? [{ k: 'cash', label: '手元のお金', v: cash, color: 'var(--c-cash)' }] : []), ...parts].map((x, i) => ({ ...x, color: x.color || PAL[(i - (cash ? 1 : 0)) % PAL.length] }));
-  return html`<section class="card">
-    <div class="card-h"><h3>🧺 資産の内訳</h3><${Seg} small value=${by} onChange=${setBy} options=${[{ v: 'name', label: '銘柄' }, { v: 'acct', label: '口座' }]} /></div>
-    ${total > 0 && html`<div class="stack">${parts.map((x) => html`<i key=${x.k} style=${{ width: (x.v / total) * 100 + '%', background: x.color }}></i>`)}</div>
-    ${parts.map((x) => html`<div key=${x.k} class="bd-row"><span><i style=${{ background: x.color }}></i>${x.label}</span><b class="num">${yen(x.v)}</b><em>${Math.round((x.v / total) * 100)}%</em></div>`)}`}
-    ${!open.length && html`<p class="muted small">株・投信をまだ登録していません。「＋ 買った」から、証券口座で持っているものを1つずつ入れると、ここに割合が出ます。</p>`}
-    ${loose > 0 && html`<div class="note">家計簿で「投資へ」と記録した ${yen(loose)} は、まだ株・投信として登録されていません(何を買ったかが分からないため、資産の評価額には入っていません)。<button class="text-btn" onClick=${() => app.open('lot')}>持っている株・投信を登録する ›</button></div>`}
-  </section>`;
-}
-
 // ---- NISAの枠(今年どれだけ使ったか)。つみたて投資枠は年120万円、成長投資枠は年240万円、生涯1800万円
-function NisaCard({ q, open }) {
+export function NisaCard({ q, open }) {
   const year = String(new Date().getFullYear());
   const fx = q['JPY=X']?.cur || 150;
   let tsumi = 0, growth = 0;
@@ -303,10 +205,10 @@ function NisaCard({ q, open }) {
   if (!tsumi && !growth && !life) return null;
   const bar = (used, max, color) => html`<div class="nisa-bar"><div class="meter"><i style=${{ width: Math.min(100, (used / max) * 100) + '%', background: color }}></i></div><div class="nb-foot"><span>使った ${yen(used)}</span><span>残り ${yen(Math.max(0, max - used))}</span></div></div>`;
   return html`<section class="card">
-    <div class="card-h"><h3>🌿 NISAの枠(${year}年)</h3></div>
+    <div class="card-h"><h3>NISAの枠(${year}年)</h3></div>
     <div class="nisa-l"><b>つみたて投資枠</b><small>年120万円</small></div>${bar(tsumi, 1200000, 'var(--c-inv)')}
     ${planLeft > 0 && html`<small class="muted">この年の残りの積立予定 約${yen(planLeft)}(積立日までに入る分)</small>`}
-    <div class="nisa-l"><b>成長投資枠</b><small>年240万円</small></div>${bar(growth, 2400000, 'var(--accent)')}
+    <div class="nisa-l"><b>成長投資枠</b><small>年240万円</small></div>${bar(growth, 2400000, 'var(--s1)')}
     <div class="nisa-l"><b>生涯の枠(目安)</b><small>1,800万円</small></div>${bar(life, 18000000, 'var(--ink3)')}
     <p class="fine">年の枠は、その年に買った金額で数えます(売っても、その年の枠は戻りません)。生涯の枠は、いま持っているNISAの買った値段の合計(目安)です。</p>
   </section>`;
@@ -319,17 +221,29 @@ function EarningsCard({ open }) {
   const want = S.all('watch').filter((x) => isStockSym(x.symbol) && !held.some((h) => h.symbol === x.symbol)).map((x) => ({ symbol: x.symbol, name: x.name, own: false }));
   const all = [...held, ...want];
   useEffect(() => { all.length && loadEarnings(all.map((x) => x.symbol)); }, [all.length]);
-  if (!all.length) return null;
+  if (!all.length) return html`<${Empty} title="持っている株・買いたい株がまだありません" />`;
   const e = getEarnings();
   const rows = all.map((x) => ({ ...x, e: e[x.symbol] })).sort((a, b) => (a.e?.next || '9') < (b.e?.next || '9') ? -1 : 1);
   return html`<section class="card">
-    <div class="card-h"><h3>📅 決算の予定</h3></div>
     ${rows.map((x) => html`<button key=${x.symbol} class=${'row earn-row' + (x.e?.next && daysTo(x.e.next) <= 7 && daysTo(x.e.next) >= 0 ? ' soon' : '')} onClick=${() => app.go('stock/' + encodeURIComponent(x.symbol))}>
       <span class=${'side ' + (x.own ? 'buy' : 'want')}>${x.own ? '持' : '買'}</span>
       <span class="rm">${shortName(getQuotes('1y')[x.symbol]?.name || x.name)}<small>${x.e?.last ? `前回 ${+x.e.last.slice(5, 7)}/${+x.e.last.slice(8)}` : ''}</small></span>
       <span class="ev">${x.e?.next ? html`<b class="num">${+x.e.next.slice(5, 7)}/${+x.e.next.slice(8)}${x.e.est ? 'ごろ' : ''}</b><small>${daysTo(x.e.next) === 0 ? '今日' : 'あと' + daysTo(x.e.next) + '日'}</small>` : html`<small>${x.e ? 'わかりません' : '読みこみ中'}</small>`}</span></button>`)}
     <p class="fine">日本株は Yahoo!ファイナンス、米国株は Nasdaq の情報です。「ごろ」は会社がまだ日付を出していないので、前回から約3か月後の目安です。</p>
   </section>`;
+}
+
+// ---- 決算の予定 / 指数とくらべる(それぞれ1画面)
+export function EarningsPage() {
+  const q = quotesForCalc();
+  const open = positions(q, q['JPY=X']?.cur).filter((p) => !p.closed);
+  return html`<div class="page"><${PageHead} title="決算の予定" /><${EarningsCard} open=${open} /><div class="bottom-space"></div></div>`;
+}
+export function ComparePage() {
+  const q = quotesForCalc();
+  const open = positions(q, q['JPY=X']?.cur).filter((p) => !p.closed);
+  useEffect(() => { refreshQuotes(); }, []);
+  return html`<div class="page"><${PageHead} title="指数とくらべる" /><${Compare} open=${open} q=${q} /><div class="bottom-space"></div></div>`;
 }
 
 // ---- 1銘柄のくわしい画面
@@ -396,9 +310,9 @@ export function StockDetail({ symbol }) {
   const mineSeries = useMemo(() => (plan || lots.length ? holdingSeries([symbol], qc, fx, hrange) : []), [S.getVersion(), symbol, hrange, qc[symbol]?.points?.length, qc[symbol]?.cur, fx]);
 
   return html`<div class="page detail">
-    <header class="top"><button class="icon-btn" onClick=${() => history.back()} aria-label="もどる">‹</button><h1 class="dt">${shortName(d?.name || p?.name || symbol)}</h1><span class="sym">${symbol}</span></header>
+    <${PageHead} title=${shortName(d?.name || p?.name || symbol)} right=${html`<span class="sym">${symbol.replace(/\.T$/, '')}</span>`} />
     <section class="card">
-      ${isStockSym(symbol) && getEarnings()[symbol]?.next && html`<div class="earn-line">📅 次の決算 ${earnLabel(getEarnings()[symbol])}${getEarnings()[symbol].last ? `(前回 ${+getEarnings()[symbol].last.slice(5, 7)}/${+getEarnings()[symbol].last.slice(8)})` : ''}</div>`}
+      ${isStockSym(symbol) && getEarnings()[symbol]?.next && html`<div class="earn-line">次の決算 ${earnLabel(getEarnings()[symbol])}${getEarnings()[symbol].last ? `(前回 ${+getEarnings()[symbol].last.slice(5, 7)}/${+getEarnings()[symbol].last.slice(8)})` : ''}</div>`}
       <div class="px"><b class="num">${d?.cur != null ? fmtP(d.cur) : '…'}</b>${ch != null && html`<span class=${'num ' + tone(ch)}>${pm(ch, ch && Math.abs(ch) < 10 ? 2 : 0)} (${pct(ch / d.prev, 2)})</span>`}</div>
       <${Seg} small value=${range} onChange=${setRange} options=${isFundSym(symbol) ? DRANGE.slice(1) : DRANGE} />
       ${cmp && benchVals
@@ -422,6 +336,7 @@ export function StockDetail({ symbol }) {
         ${p.realized ? html`<div><span>確定した損益</span><b class=${'num ' + tone(p.realized)}>${pm(p.realized)}円</b></div>` : null}
       </div>
     </section>`}
+    ${p && !p.closed && html`<${HoldingCard} key=${p.symbol} p=${p} />`}
     ${mineSeries.length > 1 && html`<section class="card">
       <div class="card-h"><h3>${plan ? '積立の歩み' : '自分の持ち分の推移'}</h3></div>
       <${Seg} small value=${hrange} onChange=${setHrange} options=${[{ v: 30, label: '1か月' }, { v: 91, label: '3か月' }, { v: 365, label: '1年' }, { v: 3650, label: '全部' }]} />
@@ -672,22 +587,22 @@ export function CashSheet({ onClose }) {
 }
 
 // ---- 貯める目標(総資産がどこまで来たか・毎月の投資額)
-function GoalCard({ total, list, conf }) {
+export function GoalCard({ total, list, conf }) {
   const app = useApp();
   const g = conf.goal;
   const curKey = periodKeyOf(today(), conf.startDay);
   const past = [1, 2, 3].map((i) => summary(list, addMonths(curKey, -i), conf));
   const monthlyInv = Math.round(sum(past, (p) => p.inv) / 3);
   if (!g?.amount) {
-    return html`<button class="card goal-unset" onClick=${() => app.open('goal')}><b>🎯 貯める目標を決める</b><small>例: 「旅行資金 30万円」「100万円」。総資産がどこまで来たか、ここに出ます${monthlyInv ? `(いま毎月 約${yen(monthlyInv)} を投資に回しています)` : ''}</small></button>`;
+    return html`<div class="sec flush"><button class="row" onClick=${() => app.open('goal')}><span class="rm"><span class="rt">貯める目標を決める</span><small>例: 旅行資金 30万円${monthlyInv ? `・いま毎月 約${yen(monthlyInv)} を投資中` : ''}</small></span><span class="chev">›</span></button></div>`;
   }
   const r = Math.max(0, Math.min(1, total / g.amount));
   const left = g.amount - total;
   const months = g.date ? Math.max(0, Math.round((parseD(g.date) - parseD(today())) / 864e5 / 30.4)) : null;
   return html`<section class="card goal" onClick=${() => app.open('goal')}>
-    <div class="card-h"><h3>🎯 ${g.name || '目標'}</h3><span class="num">${yen(g.amount)}</span></div>
-    <div class="meter"><i style=${{ width: `${r * 100}%`, background: 'var(--accent)' }}></i></div>
-    <div class="goal-foot"><span>${Math.round(r * 100)}% 達成</span><span>${left > 0 ? `あと ${yen(left)}` : '達成しました 🎉'}</span></div>
+    <div class="card-h"><h3>目標: ${g.name || '貯める'}</h3><span class="num">${yen(g.amount)}</span></div>
+    <div class="meter"><i style=${{ width: `${r * 100}%`, background: 'var(--c-inv)' }}></i></div>
+    <div class="goal-foot"><span>${Math.round(r * 100)}% 達成</span><span>${left > 0 ? `あと ${yen(left)}` : '達成しました'}</span></div>
     ${left > 0 && months != null && months > 0 && html`<small class="muted">${g.date.slice(0, 4)}年${+g.date.slice(5, 7)}月まで あと${months}か月 → 毎月 約${yen(Math.ceil(left / months))} ずつ</small>`}
     ${monthlyInv > 0 && html`<small class="muted">いま毎月 約${yen(monthlyInv)} を投資に回しています(直近3か月の平均)</small>`}
   </section>`;

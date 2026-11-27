@@ -1,6 +1,6 @@
 // 資産の中身: 「積立・投信」と「個別株」を分けて並べ、まとめの推移グラフと、個別株の分散(銘柄・業種・口座)を見せる
 import React, { useState, useEffect, useMemo } from 'react';
-import { html, useApp, Seg, Empty } from './ui.js';
+import { html, useApp, Seg, Empty, PageHead } from './ui.js';
 import { LineChart, Donut } from './charts.js';
 import { yen, pm, pct, tone, sum, short, groupBy } from './util.js';
 import { positions, holdingSeries } from './calc.js';
@@ -10,8 +10,8 @@ import * as S from './store.js';
 
 const COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#6250d6', '#eda100', '#e87ba4', '#09a5cc', '#a9673c', '#7a9a1e', '#a39d93'];
 const KIND = {
-  fund: { icon: '🌱', title: '積立・投信', add: 'plan', addLabel: '＋ 積立を登録' },
-  stock: { icon: '📈', title: '個別株', add: 'lot', addLabel: '＋ 買った' },
+  fund: { title: '積立・投信', add: 'plan', addLabel: '＋ 積立を登録' },
+  stock: { title: '個別株', add: 'lot', addLabel: '＋ 買った' },
 };
 
 const totals = (list) => {
@@ -41,11 +41,9 @@ export function Holdings({ pos, q }) {
     const T = totals(open);
     return html`<section key=${k} class="card">
       <button class="hold-head" onClick=${() => app.go('port/' + k)}>
-        <span class="hold-top"><h3>${K.icon} ${K.title}</h3><span class="chev">›</span></span>
-        ${open.length > 0 && html`<span class="hold-val"><b class="num">${yen(T.value)}</b><span class=${'num ' + tone(T.pl)}>${pm(T.pl)}円 (${pct(T.rate)})</span></span>
-          <span class="hold-more">${k === 'stock' ? '分散の内訳とまとめのグラフを見る' : 'まとめのグラフを見る'}</span>`}
+        <span class="hold-top"><h3>${K.title}</h3><span class="chev">›</span></span>
+        ${open.length > 0 && html`<span class="hold-val"><b class="num">${yen(T.value)}</b><span class=${'num ' + tone(T.pl)}>${pm(T.pl)}円 (${pct(T.rate)})</span></span>`}
       </button>
-      ${k === 'stock' && open.length > 1 && T.value > 0 && html`<div class="stack">${[...open].sort((a, b) => (b.value || 0) - (a.value || 0)).map((p, i) => html`<i key=${p.symbol} title=${shortName(p.name)} style=${{ width: ((p.value || 0) / T.value) * 100 + '%', background: COLORS[i % COLORS.length] }}></i>`)}</div>`}
       ${open.map((p) => html`<${Row} key=${p.symbol} p=${p} q=${q} />`)}
       ${!open.length && html`<p class="muted">${k === 'fund' ? 'オルカンなどの積立を登録すると、毎月の積立日に自動で口数を足して、投資した額と今の評価額を出します。' : '買った銘柄・日・株数・値段を入れると、今いくらになっているかと分散がわかります。'}</p>`}
       <${Closed} list=${mine.filter((p) => p.closed)} />
@@ -62,7 +60,7 @@ function Diversity({ open }) {
   useEffect(() => { loadProfiles(open.map((p) => p.symbol)); }, [open.map((p) => p.symbol).join()]);
   const priced = open.filter((p) => p.value > 0);
   const total = sum(priced, (p) => p.value);
-  if (!total) return html`<section class="card"><h3>🧩 分散の内訳</h3><p class="muted">値段を読みこむと、ここに内訳が出ます。</p></section>`;
+  if (!total) return html`<section class="card"><h3>分散の内訳</h3><p class="muted">値段を読みこむと、ここに内訳が出ます。</p></section>`;
   const sectorOf = (p) => prof[p.symbol]?.industry || '業種を調べ中';
   const group = (pairs) => [...groupBy(pairs, (x) => x[0])].map(([label, l]) => ({ label, value: sum(l, (x) => x[1]) }));
   const parts = (by === 'name' ? priced.map((p) => ({ label: shortName(p.name), value: p.value }))
@@ -75,7 +73,7 @@ function Diversity({ open }) {
   const sectors = group(priced.map((p) => [sectorOf(p), p.value])).sort((a, b) => b.value - a.value);
   const ratio = (v) => Math.round((v / total) * 100) + '%';
   return html`<section class="card">
-    <div class="card-h"><h3>🧩 分散の内訳</h3></div>
+    <div class="card-h"><h3>分散の内訳</h3></div>
     <${Seg} small value=${by} onChange=${(v) => { setBy(v); setPicked(null); }} options=${[{ v: 'name', label: '銘柄' }, { v: 'sector', label: '業種' }, { v: 'acct', label: '口座' }]} />
     <div class="donut-wrap port"><${Donut} data=${parts} center=${yen(total)} sub="個別株" picked=${picked} onPick=${setPicked} /></div>
     ${parts.map((x) => html`<button key=${x.key} class=${'bd-row' + (picked === x.key ? ' on' : '')} onClick=${() => setPicked(picked === x.key ? null : x.key)}><span><i style=${{ background: x.color }}></i>${x.label}</span><b class="num">${yen(x.value)}</b><em>${ratio(x.value)}</em></button>`)}
@@ -105,8 +103,8 @@ export function PortfolioPage({ kind, qv }) {
   useEffect(() => { refreshQuotes(); }, []);
   const series = useMemo(() => holdingSeries(all, q, fx, range), [S.getVersion(), qv, range, all.join(), Object.keys(q).length]);
   return html`<div class="page assets">
-    <header class="top"><button class="icon-btn" onClick=${() => history.back()} aria-label="もどる">‹</button><h1>${K.title}</h1><span class="bar-r"></span></header>
-    ${!open.length && !series.length ? html`<${Empty} icon=${K.icon} title="まだ登録がありません"><button class="btn small" onClick=${() => app.open(K.add)}>${K.addLabel}</button></${Empty}>` : html`<${React.Fragment}>
+    <${PageHead} title=${K.title} />
+    ${!open.length && !series.length ? html`<${Empty} title="まだ登録がありません"><button class="btn small" onClick=${() => app.open(K.add)}>${K.addLabel}</button></${Empty}>` : html`<${React.Fragment}>
     <section class="card hero">
       <div class="label">${K.title}の評価額</div>
       <div class="num hero-num">${yen(T.value)}</div>
@@ -124,7 +122,7 @@ export function PortfolioPage({ kind, qv }) {
     </section>
     ${kind === 'stock' && open.length > 0 && html`<${Diversity} open=${open} />`}
     <section class="card">
-      <div class="card-h"><h3>${K.icon} 銘柄ごと(押すと推移)</h3><button class="text-btn" onClick=${() => app.open(K.add)}>${K.addLabel}</button></div>
+      <div class="card-h"><h3>銘柄ごと</h3><button class="text-btn" onClick=${() => app.open(K.add)}>${K.addLabel}</button></div>
       ${open.map((p) => html`<${Row} key=${p.symbol} p=${p} q=${q} />`)}
       <${Closed} list=${pos.filter((p) => p.closed)} />
     </section>

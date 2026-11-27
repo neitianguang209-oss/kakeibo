@@ -54,6 +54,6 @@ export function rpc(action, args = {}) {
   return post(`${SB_URL}/rest/v1/rpc/kakeibo_api`, { p_key: getKey(), p_action: action, p_args: args });
 }
 // 株価・投信・レシート読み取りは Edge Function kakeibo
-export function fn(action, args = {}, ms = 30000) {
-  return post(`${SB_URL}/functions/v1/kakeibo`, { action, ...args }, { 'x-kb-key': getKey() }, ms);
+export function fn(action, args = {}, ms = 30000, name = 'kakeibo') {
+  return post(`${SB_URL}/functions/v1/${name}`, { action, ...args }, { 'x-kb-key': getKey() }, ms);
 }
