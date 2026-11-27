@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { html, useApp, Seg, Empty } from './ui.js';
 import { Donut, Bars, Meter } from './charts.js';
 import { MonthPill } from './records.js';
+import { ItemsCard, CatContents } from './items.js';
 import { yen, pct, today, periodKeyOf, addMonths, sum, catInfo, GROUPS, short, jpDay, md } from './util.js';
 import { txs, summary, getConf, insights, nextMonthPlan, monthLabel } from './calc.js';
 import * as S from './store.js';
@@ -41,6 +42,7 @@ export function Report({ start }) {
   const tips = useMemo(() => insights(list, conf), [S.getVersion()]);
   const next = useMemo(() => nextMonthPlan(list, conf), [S.getVersion()]);
 
+  const periodList = list.filter((t) => t.date >= s.start && t.date <= s.end);
   const rows = mode === 'out' ? s.byCat : s.incByCat;
   const tot = mode === 'out' ? s.out : s.in;
   const donut = rows.map((r) => {
@@ -96,13 +98,14 @@ export function Report({ start }) {
             const avg = mode === 'out' && isM ? avgOf(r.cat) : null;
             const b = isM ? conf.catBudgets?.[r.cat] : null;
             const diff = avg != null && avg > 0 ? (r.amount - avg) / avg : null;
-            return html`<button key=${r.cat} class=${'cat-row' + (picked === r.cat ? ' on' : '')} onClick=${() => setPicked(picked === r.cat ? null : r.cat)}>
+            return html`<div key=${r.cat}><button class=${'cat-row' + (picked === r.cat ? ' on' : '')} onClick=${() => setPicked(picked === r.cat ? null : r.cat)}>
               <span class="ri" style=${{ '--cc': c.color }}>${c.icon}</span>
               <span class="cr-main"><span class="cr-top"><b>${r.cat}</b><small>${r.n}回</small><span class="num">${yen(r.amount)}</span><em>${Math.round((r.amount / (tot || 1)) * 100)}%</em></span>
                 ${b ? html`<${Meter} value=${r.amount} max=${b} color=${c.color} />` : html`<span class="share"><i style=${{ width: Math.max(2, Math.round((r.amount / (tot || 1)) * 100)) + '%', background: c.color }}></i></span>`}
                 ${diff != null && Math.abs(diff) >= 0.15 && html`<small class=${diff > 0 ? 'up' : 'down'}>3か月平均より ${pct(diff, 0)}(平均 ${yen(avg)})</small>`}
                 ${b ? html`<small>予算 ${yen(b)} ${r.amount > b ? `・${yen(r.amount - b)} オーバー` : `・あと ${yen(b - r.amount)}`}</small>` : null}
-              </span></button>`;
+              </span></button>
+              ${picked === r.cat && html`<${CatContents} key=${key + view + yr} list=${periodList} cat=${r.cat} type=${mode} />`}</div>`;
           })}
         </div>
         ${mode === 'out' && html`<div class="split">
@@ -111,6 +114,8 @@ export function Report({ start }) {
         </div>`}`
       : html`<${Empty} icon="🍩" title="この月の記録はまだありません" />`}
     </section>
+
+    ${mode === 'out' && html`<${ItemsCard} list=${periodList} />`}
 
     <section class="card">
       <div class="card-h"><h3>${isM ? '月ごとの推移' : view === 'year' ? `${yr}年の月ごとの収支` : '年ごとの収支'}</h3>${isM && html`<${Seg} small value=${span} onChange=${setSpan} options=${[{ v: 6, label: '6か月' }, { v: 12, label: '1年' }]} />`}</div>

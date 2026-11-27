@@ -2,7 +2,8 @@
 //  quote    : 株・指数(Yahoo Finance)と投資信託(三菱UFJアセットの公開データ / Yahoo!ファイナンス)の値段と推移
 //  earnings : 決算発表日(日本株は Yahoo!ファイナンス、米国株は Nasdaq)
 //  search   : 銘柄をさがす(コード・会社名)
-//  receipt  : レシートの写真を Gemini が読んで、店・日付・合計・カテゴリを返す(キーは あさよみ と共用)
+//  receipt  : レシートの写真を Gemini が読んで、店・日付・合計・カテゴリ・品目を返す(キーは あさよみ と共用)
+//  profile  : 銘柄の業種(分散を見るため。日本株は Yahoo!ファイナンス)
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
@@ -244,6 +245,23 @@ async function search(q: string) {
   return out.slice(0, 8);
 }
 
+// ---- 業種
+async function profileOne(sym: string) {
+  if (isFund(sym) || /^\^|=X$/.test(sym)) return null;
+  if (!/\.T$/.test(sym)) return { industry: '米国株など' };
+  const k = 'prof:' + sym;
+  const c = await cacheGet(k, 30 * 864e5);
+  if (c) return c;
+  try {
+    const h = await (await get(`https://finance.yahoo.co.jp/quote/${encodeURIComponent(sym)}`, 10000)).text();
+    const industry = h.match(/\\"industryName\\":\\"([^\\"]+)/)?.[1];
+    if (!industry) return null;
+    const v = { industry: deEnt(industry) };
+    await cachePut(k, v);
+    return v;
+  } catch { return null; }
+}
+
 // ---- レシートを読む(Gemini)
 const GEMINI = 'https://generativelanguage.googleapis.com/v1beta/';
 const MODELS = ['gemini-flash-latest', 'gemini-2.5-flash'];
@@ -258,15 +276,45 @@ async function geminiSetup() {
   } catch { /* 決まった順で */ }
   return { key: Deno.env.get('GEMINI_API_KEY') || get('gemini_key'), models };
 }
+const ITEM_TAGS = ['野菜・果物', '肉・魚', '卵・乳・豆腐', '米・パン・麺', '惣菜・弁当', '冷凍・即席', 'お菓子', '飲み物', 'お酒', '調味料', '外食メニュー', '日用品', 'コスメ・衛生', '服・靴', '本・文具', '趣味・推し', 'そのほか'];
+// 品目をカテゴリごとにまとめる。税・値引きで合計とずれる分は、金額の割合で分けて、まとめの合計が払った額になるようにする
+// deno-lint-ignore no-explicit-any
+function withParts(r: any, cats: string[]) {
+  const items = (Array.isArray(r?.items) ? r.items : []).filter((x: { name?: string }) => x?.name);
+  const fallback = cats.includes(r?.category) ? r.category : 'その他';
+  const groups = new Map<string, { category: string; sum: number; items: unknown[] }>();
+  for (const x of items) {
+    const category = cats.includes(x.category) ? x.category : fallback;
+    const g = groups.get(category) || { category, sum: 0, items: [] };
+    g.sum += Math.round(+x.price || 0);
+    g.items.push({ name: String(x.name).slice(0, 60), qty: +x.qty || 1, price: Math.round(+x.price || 0), tag: ITEM_TAGS.includes(x.tag) ? x.tag : '' });
+    groups.set(category, g);
+  }
+  const list = [...groups.values()].sort((a, b) => b.sum - a.sum);
+  const sum = list.reduce((s, g) => s + g.sum, 0);
+  const total = Math.round(+r?.total || 0) || sum;
+  let left = total;
+  const parts = list.map((g, i) => {
+    const amount = i === list.length - 1 ? left : sum > 0 ? Math.round((g.sum / sum) * total) : 0;
+    left -= amount;
+    const names = (g.items as { name: string }[]).map((x) => x.name);
+    return { category: g.category, amount, memo: names.slice(0, 2).join('・') + (names.length > 2 ? `ほか${names.length}点` : ''), items: g.items };
+  });
+  if (!parts.length) parts.push({ category: fallback, amount: total, memo: '', items: [] });
+  return { store: r?.store || '', date: r?.date || '', total, pay: r?.pay || '', parts };
+}
 async function receipt(image: string, mime: string, cats: string[], today: string) {
   const { key, models } = await geminiSetup();
   if (!key) return { error: 'AIのキーがありません' };
   const sys = [
     'あなたは家計簿の入力係です。レシート(または支払い画面・明細)の写真から、支出を読み取ってください。',
     `カテゴリは次から1つ選ぶ: ${cats.join(' / ')}`,
-    '1枚のレシートに性質の違う物(例: 食料品と日用品)が混ざっていたら、カテゴリごとに分けて合計してよい(最大5つ)。',
+    '買った品物は1行ずつ items に入れる。name はレシートの品名(略号はわかる範囲で自然な日本語に)、qty は個数、price はその行の金額(印字されたとおり。値引きの行は品物の金額から引く)。',
+    `category は上のカテゴリから、tag は次から1つ: ${ITEM_TAGS.join(' / ')}`,
+    '読めない品物は作らない。明細が無い画面(支払い完了画面など)なら items は空にする。',
+    'total は実際に払った税込の合計。',
     `日付が読めなければ ${today}。年が書いていなければ ${today.slice(0, 4)} 年。金額は税込の整数(円)。`,
-    '答えは JSON だけ: {"store":"店名","date":"YYYY-MM-DD","total":1234,"pay":"現金/カード/電子マネー/不明","parts":[{"category":"食費","amount":1000,"memo":"お弁当・お茶"}]}',
+    '答えは JSON だけ: {"store":"店名","date":"YYYY-MM-DD","total":1234,"pay":"現金/カード/電子マネー/不明","category":"全体で一番近いカテゴリ","items":[{"name":"お弁当","qty":1,"price":498,"category":"食費","tag":"惣菜・弁当"}]}',
   ].join('\n');
   for (const model of models) {
     const r = await fetch(`${GEMINI}models/${model}:generateContent`, {
@@ -275,9 +323,9 @@ async function receipt(image: string, mime: string, cats: string[], today: strin
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: sys }] },
         contents: [{ role: 'user', parts: [{ inline_data: { mime_type: mime, data: image } }, { text: 'このレシートを読んで' }] }],
-        generationConfig: { temperature: 0, maxOutputTokens: 4096, responseMimeType: 'application/json' },
+        generationConfig: { temperature: 0, maxOutputTokens: 16384, responseMimeType: 'application/json' },
       }),
-      signal: AbortSignal.timeout(45000),
+      signal: AbortSignal.timeout(60000),
     }).catch(() => null);
     if (!r) continue;
     if (!r.ok) {
@@ -289,7 +337,7 @@ async function receipt(image: string, mime: string, cats: string[], today: strin
     // deno-lint-ignore no-explicit-any
     const raw = (j?.candidates?.[0]?.content?.parts || []).filter((p: any) => p.text && !p.thought).map((p: any) => p.text).join('');
     try {
-      return JSON.parse(raw.replace(/^```(?:json)?|```$/g, '').trim());
+      return withParts(JSON.parse(raw.replace(/^```(?:json)?|```$/g, '').trim()), cats);
     } catch { continue; }
   }
   return { error: 'AIが混んでいます。少しあとでもう一度' };
@@ -312,6 +360,11 @@ Deno.serve(async (req) => {
     if (b.action === 'earnings') {
       const syms: string[] = (Array.isArray(b.symbols) ? b.symbols : []).map(String).filter(Boolean).slice(0, 30);
       const vals = await Promise.all(syms.map((s) => earningsOne(s)));
+      return json(Object.fromEntries(syms.map((s, i) => [s, vals[i]])));
+    }
+    if (b.action === 'profile') {
+      const syms: string[] = (Array.isArray(b.symbols) ? b.symbols : []).map(String).filter(Boolean).slice(0, 30);
+      const vals = await Promise.all(syms.map((s) => profileOne(s)));
       return json(Object.fromEntries(syms.map((s, i) => [s, vals[i]])));
     }
     if (b.action === 'search') return json({ results: await search(String(b.q || '')) });

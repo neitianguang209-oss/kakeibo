@@ -34,6 +34,11 @@ export async function loadQuotes(symbols, range = '1y', force = false) {
   const ttl = range === '1d' || range === '5d' ? 5 * 60e3 : 15 * 60e3;
   const need = [...new Set(symbols)].filter((s) => s && (force || !b[s] || Date.now() - (b[s]._at || 0) > ttl));
   if (!need.length) return b;
+  // サーバーは1回30銘柄まで
+  if (need.length > 30) {
+    for (let i = 0; i < need.length; i += 30) await loadQuotes(need.slice(i, i + 30), range, force);
+    return b;
+  }
   const key = range + ':' + need.join(',');
   if (!inflight[key]) {
     inflight[key] = fn('quote', { symbols: need, range }, 40000)
@@ -99,4 +104,25 @@ export async function loadEarnings(symbols, force = false) {
     .finally(() => { earnBusy = null; });
   await earnBusy;
   return e;
+}
+
+// ---- 業種(分散を見るため。ほとんど変わらないので30日ごと)。{ sym: { industry, _at } }
+const LP = 'kakeibo:profiles';
+let prof = null;
+export function getProfiles() {
+  if (!prof) prof = lsJson(LP, {});
+  return prof;
+}
+export async function loadProfiles(symbols) {
+  const pr = getProfiles();
+  if (!getKey()) return pr;
+  const need = [...new Set(symbols)].filter((s) => s && (!pr[s]?.industry || Date.now() - (pr[s]._at || 0) > 30 * 864e5)).slice(0, 30);
+  if (!need.length) return pr;
+  try {
+    const r = await fn('profile', { symbols: need }, 40000);
+    for (const [s, v] of Object.entries(r || {})) if (v?.industry) pr[s] = { ...v, _at: Date.now() };
+    try { lsSet(LP, JSON.stringify(pr)); } catch { /* いっぱい */ }
+    emit();
+  } catch { /* 次の機会に */ }
+  return pr;
 }

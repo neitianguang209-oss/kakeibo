@@ -5,6 +5,7 @@ import * as S from './store.js';
 import { fn, getKey, lsGet, lsSet } from './api.js';
 import { catList, catInfo, guessCat, INV_CATS, today, addDays, yen, uid, jpDay, mdw, PAY, fold, vibrate } from './util.js';
 import { txs, memoHistory, memoSuggest, getConf } from './calc.js';
+import { ItemsSheet, ItemRows, cleanItems, itemsSum } from './items.js';
 
 const TYPES = [
   { v: 'out', label: '支出', color: 'var(--accent)' },
@@ -29,6 +30,8 @@ export function EntrySheet({ tx, preset = {}, onClose, page = false }) {
   const [cont, setCont] = useState(false);
   const [count, setCount] = useState(0);
   const [showReceipt, setShowReceipt] = useState(false);
+  const [items, setItems] = useState(tx?.items || []);
+  const [showItems, setShowItems] = useState(false);
   const all = useMemo(() => txs(), [S.getVersion()]);
   const hist = useMemo(() => memoHistory(all), [all]);
   const [moreCats, setMoreCats] = useState(false);
@@ -44,7 +47,9 @@ export function EntrySheet({ tx, preset = {}, onClose, page = false }) {
   const LIMIT = page ? 13 : 8;
   const shownCats = moreCats || cats.length <= LIMIT + 1 ? cats : (() => { const top = cats.slice(0, LIMIT); if (cat && !top.some((c) => c.id === cat)) top[LIMIT - 1] = cats.find((c) => c.id === cat); return top; })();
   const sugg = useMemo(() => memoSuggest(all, null, type), [all, type]);
-  const amount = evalExpr(expr);
+  const typed = evalExpr(expr);
+  // 金額を入れていなければ、内訳の合計を金額にする
+  const amount = typed || (type === 'out' ? Math.max(0, itemsSum(items)) : 0);
   const dateRef = useRef(null);
 
   useEffect(() => {
@@ -70,6 +75,9 @@ export function EntrySheet({ tx, preset = {}, onClose, page = false }) {
     const id = tx?.id || uid('t');
     const rec = { ...(tx || {}), id, type, amount: Math.abs(amount), cat: useCat, date, memo: memo.trim(), pay, t: tx?.t || Date.now(), src: tx?.src || 'manual' };
     delete rec.pending;
+    const its = type === 'out' ? cleanItems(items, useCat) : [];
+    if (its.length) rec.items = its;
+    else delete rec.items;
     await S.save('tx', rec);
     if (cat) lsSet('kakeibo:lastcat:' + type, cat);
     vibrate(12);
@@ -77,6 +85,7 @@ export function EntrySheet({ tx, preset = {}, onClose, page = false }) {
       setCount((c) => c + 1);
       setExpr('');
       setMemo('');
+      setItems([]);
       setCatTouched(false);
       setShowHist(false);
       app.toast(`${catInfo(useCat, conf).icon} ${useCat} ${yen(amount)} を記録`, () => S.remove(id));
@@ -102,7 +111,7 @@ export function EntrySheet({ tx, preset = {}, onClose, page = false }) {
         <label class="dpill"><b>${+date.slice(5, 7)}月${+date.slice(8)}日(${mdw(date).slice(-2, -1)})</b>${date !== today() && html`<small>${date.slice(0, 4)}年</small>`}<input ref=${dateRef} type="date" value=${date} onChange=${(e) => e.target.value && setDate(e.target.value)} class="hidden-date" /></label>
         <button class="dn" onClick=${() => setDate(addDays(date, 1))} aria-label="次の日">›</button>
         ${date !== today() && html`<button class="today-btn" onClick=${() => setDate(today())}>今日</button>`}</div>
-      <div class="frow"><span class="fl">メモ</span><input class="memo" placeholder="未入力" value=${memo} onChange=${(e) => setMemo(e.target.value)} maxLength="60" /><button class=${'hist-btn' + (showHist ? ' on' : '')} onClick=${() => setShowHist(!showHist)} aria-label="メモの履歴">履歴</button></div>
+      <div class="frow"><span class="fl">メモ</span><input class="memo" placeholder="未入力" value=${memo} onChange=${(e) => setMemo(e.target.value)} maxLength="60" />${type === 'out' && html`<button class=${'hist-btn' + (items.length ? ' on' : '')} onClick=${() => setShowItems(true)} aria-label="内訳(買ったもの)">内訳${items.length ? ' ' + items.length : ''}</button>`}<button class=${'hist-btn' + (showHist ? ' on' : '')} onClick=${() => setShowHist(!showHist)} aria-label="メモの履歴">履歴</button></div>
       ${showHist && html`<div class="memo-hist">${memoShown.length ? memoShown.map((m) => html`<button key=${m.memo} class="chip ghost small" onClick=${() => { setMemo(m.memo); if (!catTouched && cats.some((c) => c.id === m.cat)) setCat(m.cat); if (!expr) setExpr(String(m.amount)); setShowHist(false); }}>${m.memo}</button>`) : html`<small class="muted">まだ履歴がありません</small>`}</div>`}
       <div class="frow amt" style=${{ '--ac': accent }}><span class="fl">金額</span>
         <div class="afield"><b class="num">${amount ? amount.toLocaleString('ja-JP') : '0'}</b>${/[+\-×÷]/.test(expr) && html`<small class="expr">${expr}</small>`}</div><span class="fu">円</span></div>
@@ -123,13 +132,15 @@ export function EntrySheet({ tx, preset = {}, onClose, page = false }) {
       </div>`;
   const reg = (close) => html`<button class="btn primary wide big reg" style=${{ background: accent, borderColor: accent }} onClick=${() => doSave(close)}>${regLabel}</button>`;
 
-  if (page) return html`<div class="entry-page">
+  const itemsSheet = showItems && html`<${ItemsSheet} items=${items} cat=${cat} amount=${typed} onDone=${setItems} onClose=${() => setShowItems(false)} />`;
+
+  if (page) return html`<${React.Fragment}><div class="entry-page">
     <header class="bar"><span class="bar-l"></span><h1>記録する</h1><button class="chip-btn" onClick=${() => setShowReceipt(true)}>📷 レシート</button></header>
     <div class="ep-mid entry">${top}</div>
     <div class="ep-bot">${tools}<${Keypad} expr=${expr} setExpr=${setExpr} />${reg(() => {})}</div>
-  </div>`;
+  </div>${itemsSheet}</${React.Fragment}>`;
 
-  return html`<${Sheet} title=${editing ? '記録を直す' : '記録する'} onClose=${onClose} full
+  return html`<${React.Fragment}><${Sheet} title=${editing ? '記録を直す' : '記録する'} onClose=${onClose} full
     right=${!editing && html`<button class="chip-btn" onClick=${() => setShowReceipt(true)}>📷 レシート</button>`}
     foot=${(close) => reg(close)}>
     ${(close) => html`<div class="entry">
@@ -139,11 +150,11 @@ export function EntrySheet({ tx, preset = {}, onClose, page = false }) {
       ${tools}
       <${Keypad} expr=${expr} setExpr=${setExpr} />
     </div>`}
-  </${Sheet}>`;
+  </${Sheet}>${itemsSheet}</${React.Fragment}>`;
 }
 
 // ---- 画像を小さくして送る
-async function shrink(file, max = 1600) {
+async function shrink(file, max = 2000) {
   const url = URL.createObjectURL(file);
   try {
     const img = await new Promise((res, rej) => {
@@ -181,9 +192,9 @@ export function ReceiptSheet({ onClose, onDone }) {
     try {
       const s = await shrink(file);
       setImg(s.preview);
-      const r = await fn('receipt', { image: s.data, mime: 'image/jpeg', categories: cats, today: today() }, 60000);
+      const r = await fn('receipt', { image: s.data, mime: 'image/jpeg', categories: cats, today: today() }, 90000);
       if (r.error) throw new Error(r.error);
-      const parts = (r.parts?.length ? r.parts : [{ category: 'その他', amount: r.total, memo: '' }]).map((p) => ({ cat: cats.includes(p.category) ? p.category : 'その他', amount: Math.round(+p.amount || 0), memo: p.memo || '' }));
+      const parts = (r.parts?.length ? r.parts : [{ category: 'その他', amount: r.total, memo: '' }]).map((p) => ({ cat: cats.includes(p.category) ? p.category : 'その他', amount: Math.round(+p.amount || 0), memo: p.memo || '', items: (p.items || []).map((x) => ({ n: x.name || '', a: Math.round(+x.price || 0), q: +x.qty || 1, tag: x.tag || '' })) }));
       setRes({ store: r.store || '', date: /^\d{4}-\d{2}-\d{2}$/.test(r.date || '') ? r.date : today(), total: r.total, pay: r.pay, parts });
       setState('check');
     } catch (e) {
@@ -192,7 +203,7 @@ export function ReceiptSheet({ onClose, onDone }) {
     }
   };
   const save = async (close) => {
-    const list = res.parts.filter((p) => p.amount > 0).map((p, i) => ({ id: uid('t'), type: 'out', amount: p.amount, cat: p.cat, date: res.date, memo: [res.store, p.memo].filter(Boolean).join(' ').slice(0, 60), pay: /カード/.test(res.pay || '') ? 'カード' : /電子|QR|pay/i.test(res.pay || '') ? 'QR・電子マネー' : /現金/.test(res.pay || '') ? '現金' : '', src: 'receipt', t: Date.now() + i }));
+    const list = res.parts.filter((p) => p.amount > 0).map((p, i) => ({ ...(cleanItems(p.items, p.cat).length ? { items: cleanItems(p.items, p.cat) } : {}), ...(res.store ? { store: res.store.slice(0, 40) } : {}), id: uid('t'), type: 'out', amount: p.amount, cat: p.cat, date: res.date, memo: [res.store, p.memo].filter(Boolean).join(' ').slice(0, 60), pay: /カード/.test(res.pay || '') ? 'カード' : /電子|QR|pay/i.test(res.pay || '') ? 'QR・電子マネー' : /現金/.test(res.pay || '') ? '現金' : '', src: 'receipt', t: Date.now() + i }));
     await S.saveMany('tx', list);
     close();
     onDone && onDone();
@@ -203,7 +214,7 @@ export function ReceiptSheet({ onClose, onDone }) {
   return html`<${Sheet} title="レシートを読む" onClose=${onClose} full
     foot=${state === 'check' && ((close) => html`<button class="btn primary wide" onClick=${() => save(close)}>この内容で記録(${yen(partsSum)})</button>`)}>
     ${state === 'pick' && html`<div class="receipt-pick">
-      <p class="muted">レシート・支払い画面・明細のスクショを撮るか選ぶと、AIが店・日付・金額・カテゴリを読み取ります。食料品と日用品が混ざっていれば分けます。</p>
+      <p class="muted">レシート・支払い画面・明細のスクショを撮るか選ぶと、AIが店・日付・金額・カテゴリと、買ったもの(品目)を読み取ります。食料品と日用品が混ざっていれば分けます。</p>
       <button class="btn primary wide big" onClick=${() => inRef.current.click()}>📷 撮る・写真を選ぶ</button>
       <input ref=${inRef} type="file" accept="image/*" hidden onChange=${(e) => go(e.target.files[0])} />
       ${err && html`<div class="note warn">${err}</div>`}
@@ -217,12 +228,13 @@ export function ReceiptSheet({ onClose, onDone }) {
         <label class="field"><span>日付</span><input type="date" value=${res.date} onChange=${(e) => setRes({ ...res, date: e.target.value })} /></label>
       </div>
       ${res.total && Math.abs(res.total - partsSum) > 1 && html`<div class="note warn">レシートの合計 ${yen(res.total)} と内訳の合計 ${yen(partsSum)} がずれています</div>`}
-      ${res.parts.map((p, i) => html`<div key=${i} class="rc-part">
+      ${res.parts.map((p, i) => html`<div key=${i} class="rc-block"><div class="rc-part">
         <select value=${p.cat} onChange=${(e) => upd(i, 'cat', e.target.value)}>${cats.map((c) => html`<option key=${c} value=${c}>${catInfo(c, conf).icon} ${c}</option>`)}</select>
         <input class="rc-memo" value=${p.memo} placeholder="メモ" onChange=${(e) => upd(i, 'memo', e.target.value)} />
         <input class="rc-amt num" inputmode="numeric" value=${p.amount} onChange=${(e) => upd(i, 'amount', +e.target.value.replace(/\D/g, '') || 0)} />
         <button class="icon-btn" aria-label="この行を消す" onClick=${() => setRes({ ...res, parts: res.parts.filter((_, j) => j !== i) })}>✕</button>
-      </div>`)}
+      </div>
+      <details class="rc-items"><summary>内訳 ${p.items?.length || 0}点</summary><${ItemRows} items=${p.items || []} cat=${p.cat} onChange=${(v) => upd(i, 'items', v)} /></details></div>`)}
       <button class="text-btn" onClick=${() => setRes({ ...res, parts: [...res.parts, { cat: 'その他', amount: 0, memo: '' }] })}>＋ 行を足す</button>
     </div>`}
   </${Sheet}>`;

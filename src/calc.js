@@ -161,7 +161,7 @@ export function planBuys(p, q) {
 export function positions(quotes, fx) {
   const map = new Map();
   const getPos = (sym, name, acct) => {
-    if (!map.has(sym)) map.set(sym, { symbol: sym, name: name || sym, qty: 0, cost: 0, realized: 0, buys: [], accts: new Set(), plan: null });
+    if (!map.has(sym)) map.set(sym, { symbol: sym, name: name || sym, qty: 0, cost: 0, realized: 0, buys: [], accts: new Set(), byAcct: {}, plan: null });
     const p = map.get(sym);
     if (acct) p.accts.add(acct);
     return p;
@@ -177,7 +177,11 @@ export function positions(quotes, fx) {
       p.realized += (q * +l.price * rate) / u - avg * q - (+l.fee || 0);
       p.cost -= avg * q;
       p.qty -= q;
+      // 売った分は、その口座の持ち分から引く
+      const a = l.acct || '';
+      p.byAcct[a] = (p.byAcct[a] || 0) - q;
     } else {
+      p.byAcct[l.acct || ''] = (p.byAcct[l.acct || ''] || 0) + +l.qty;
       p.qty += +l.qty;
       p.cost += (+l.qty * +l.price * rate) / u + (+l.fee || 0);
       p.buys.push({ date: l.date, price: +l.price, qty: +l.qty, from: 'lot' });
@@ -187,6 +191,8 @@ export function positions(quotes, fx) {
     const q = quotes[pl.symbol];
     const p = getPos(pl.symbol, pl.name, pl.acct || 'NISA つみたて');
     const buys = planBuys(pl, q);
+    const pa = pl.acct || 'NISA つみたて';
+    p.byAcct[pa] = (p.byAcct[pa] || 0) + (+pl.base?.units || 0) + sum(buys.filter((b) => !(pl.base?.date && b.date <= pl.base.date)), (b) => b.units);
     if (pl.base && +pl.base.units) {
       p.qty += +pl.base.units;
       p.cost += +pl.base.cost || 0;
@@ -203,7 +209,7 @@ export function positions(quotes, fx) {
   const out = [];
   for (const p of map.values()) {
     if (p.qty <= 1e-9 && !p.plan) {
-      if (p.realized) out.push({ ...p, value: 0, closed: true, accts: [...p.accts] });
+      if (p.realized) out.push({ ...p, value: 0, closed: true, accts: [...p.accts], kind: isFundSym(p.symbol) ? 'fund' : 'stock' });
       continue;
     }
     const q = quotes[p.symbol];
@@ -212,7 +218,8 @@ export function positions(quotes, fx) {
     const price = q?.cur ?? null;
     const value = price != null ? (p.qty * price * rate) / u : null;
     const dayChange = price != null && q?.prev ? (p.qty * (price - q.prev) * rate) / u : 0;
-    out.push({ ...p, accts: [...p.accts], name: q?.name || p.name, price, prev: q?.prev, currency: q?.currency || 'JPY', value, dayChange, pl: value != null ? value - p.cost : null, plRate: value != null && p.cost ? (value - p.cost) / p.cost : null, kind: isFundSym(p.symbol) ? 'fund' : 'stock' });
+    const held = Object.keys(p.byAcct).filter((a) => a && p.byAcct[a] > 1e-9);
+    out.push({ ...p, accts: held.length || !p.plan ? held : [...p.accts], name: q?.name || p.name, price, prev: q?.prev, currency: q?.currency || 'JPY', value, dayChange, pl: value != null ? value - p.cost : null, plRate: value != null && p.cost ? (value - p.cost) / p.cost : null, kind: isFundSym(p.symbol) ? 'fund' : 'stock' });
   }
   return out.sort((a, b) => (b.value || 0) - (a.value || 0));
 }
@@ -278,6 +285,34 @@ export function assetSeries(list, conf, quotes, fx, days = 365) {
     // 最後はいつも今日
   }
   return out;
+}
+
+// 選んだ銘柄だけの推移(評価額と、投資した元本)。最初に買った日より前は出さない
+export function holdingSeries(syms, quotes, fx, days = 365) {
+  const t = today();
+  const firsts = [
+    ...S.all('lot').filter((l) => syms.includes(l.symbol)).map((l) => l.date),
+    ...S.all('plan').filter((p) => syms.includes(p.symbol)).map((p) => p.start),
+  ].filter(Boolean).sort();
+  if (!firsts.length) return [];
+  const span = Math.min(days, Math.max(1, Math.round((parseD(t) - parseD(firsts[0])) / 864e5) + 1));
+  const step = Math.max(1, Math.ceil(span / 120));
+  const dates = [];
+  for (let i = 0; i <= span; i += step) dates.unshift(addDays(t, -i));
+  return dates.map((d) => {
+    let value = 0, cost = 0;
+    for (const s of syms) {
+      const qty = qtyAt(s, d, quotes);
+      if (!qty) continue;
+      const q = quotes[s];
+      const px = d === t ? q?.cur ?? priceAt(q, d) : priceAt(q, d);
+      const rate = q?.currency === 'USD' ? fx || 150 : 1;
+      if (px == null) continue; // 値段がまだ無い銘柄は、元本にも入れない(見かけの損にならないように)
+      value += (qty * px * rate) / unitOf(s);
+      cost += costAt(s, d, quotes, fx);
+    }
+    return { date: d, ts: parseD(d).getTime(), value, cost };
+  });
 }
 
 // ---- 見直しのヒント(ルールで。数字の根拠つき)

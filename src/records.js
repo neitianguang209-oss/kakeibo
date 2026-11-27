@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { html, useApp, Empty } from './ui.js';
 import { TxRow } from './home.js';
+import { itemText } from './items.js';
 import { yen, today, periodKeyOf, addMonths, parseD, addDays, groupBy, sum, fold, mdw, catList, md } from './util.js';
 import { txs, summary, getConf, upcoming, insights } from './calc.js';
 import * as S from './store.js';
@@ -46,7 +47,7 @@ export function Records() {
   const found = useMemo(() => {
     if (!searching) return [];
     const f = fold(q);
-    return list.filter((t) => (!cat || t.cat === cat) && (!f || fold(`${t.memo} ${t.cat} ${t.amount}`).includes(f))).slice(0, 300);
+    return list.filter((t) => (!cat || t.cat === cat) && (!f || fold(`${t.memo} ${t.cat} ${t.amount} ${itemText(t)}`).includes(f))).slice(0, 300);
   }, [q, cat, list.length]);
   const shown = searching ? found : s.list;
   const dlistRef = useRef(null);
@@ -72,7 +73,7 @@ export function Records() {
   return html`<div class="page records">
     <header class="bar"><span class="bar-l"></span><h1>カレンダー</h1><button class="icon-btn" onClick=${() => { setSearchOn(!searchOn); if (searchOn) { setQ(''); setCat(''); } }} aria-label="さがす">${searchOn ? '✕' : '🔍'}</button></header>
     ${searchOn && html`<div class="search">
-      <input type="search" placeholder="メモ・カテゴリ・金額でさがす" value=${q} onChange=${(e) => setQ(e.target.value)} />
+      <input type="search" placeholder="メモ・品名・カテゴリ・金額" value=${q} onChange=${(e) => setQ(e.target.value)} />
       <select value=${cat} onChange=${(e) => setCat(e.target.value)} aria-label="カテゴリでしぼる">
         <option value="">すべて</option>
         ${[...catList('out', conf), ...catList('in', conf)].map((c) => html`<option key=${c.id} value=${c.id}>${c.icon} ${c.id}</option>`)}
@@ -107,7 +108,7 @@ export function Records() {
     <div class="dlist" ref=${dlistRef}>
       ${grouped.length ? grouped.map(([d, l]) => html`<div key=${d} data-day=${d} class=${'day-group' + (sel === d && !searching ? ' picked' : '')}>
         <div class="day-h"><span>${d.slice(0, 4)}年${md(d).replace('/', '月')}日(${mdw(d).slice(-2, -1)})</span><span class="num">${sum(l.filter((x) => x.type === 'out'), (x) => x.amount) ? yen(sum(l.filter((x) => x.type === 'out'), (x) => x.amount)) : ''}</span></div>
-        ${l.map((t) => html`<${TxRow} key=${t.id} t=${t} conf=${conf} showDate=${false} />`)}
+        ${l.map((t) => html`<${TxRow} key=${t.id} t=${t} conf=${conf} showDate=${false} hl=${q.trim()} openItems=${!!q.trim() && (t.items || []).some((x) => fold(`${x.n} ${x.tag || ''}`).includes(fold(q)))} />`)}
       </div>`) : html`<${Empty} icon="🗒️" title=${searching ? '見つかりませんでした' : 'この月の記録はまだありません'} body=${searching ? '' : '下の「入力」から記録できます'} />`}
       ${searching && found.length > 0 && html`<div class="found-sum">${found.length}件・支出 ${yen(sum(found.filter((t) => t.type === 'out'), (t) => t.amount))}</div>`}
     </div>

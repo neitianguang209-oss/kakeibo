@@ -10,6 +10,8 @@ import { Records } from './records.js';
 import { Report } from './report.js';
 import { Budget } from './budget.js';
 import { Assets, StockDetail, GoalSheet, LotSheet, PlanSheet, PlanBaseSheet, WatchSheet, CashSheet, refreshQuotes } from './assets.js';
+import { PortfolioPage } from './portfolio.js';
+import { ItemsPage } from './items.js';
 import { Settings, Recs, RecSheet, BudgetSheet, CatsSheet, applySkin } from './settings.js';
 import { EntrySheet, ImportSheet, ReceiptSheet } from './input.js';
 import { vibrate } from './util.js';
@@ -25,6 +27,7 @@ const ICONS = {
   records: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4M8 14h2M12 14h2M16 14h.01M8 17h2',
   report: 'M12 3a9 9 0 1 0 9 9h-9V3zM15 3.5A9 9 0 0 1 20.5 9H15V3.5z',
   budget: 'M3 8a2 2 0 0 1 2-2h13v3M3 8v10a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1V10a1 1 0 0 0-1-1H5a2 2 0 0 1-2-2M16 14.5h.01',
+  assets: 'M4 20V4M4 20h16M7 16l4-5 3 3 5-7M15 7h4v4',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
 };
 const Icon = ({ k }) => html`<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d=${ICONS[k]} ${k === 'more' ? 'stroke-width="3.2"' : ''} /></svg>`;
@@ -64,11 +67,13 @@ function App() {
   else if (page === 'report') body = html`<${Report} key=${arg || 'month'} start=${arg} />`;
   else if (page === 'budget') body = html`<${Budget} />`;
   else if (page === 'assets') body = html`<${Assets} qv=${qv} />`;
+  else if (page === 'port') body = html`<${PortfolioPage} key=${arg} kind=${arg === 'fund' ? 'fund' : 'stock'} qv=${qv} />`;
+  else if (page === 'items') body = html`<${ItemsPage} key=${arg || ''} initialTag=${decodeURIComponent(arg || '')} />`;
   else if (page === 'stock') body = html`<${StockDetail} key=${arg} symbol=${decodeURIComponent(arg || '')} qv=${qv} />`;
   else if (page === 'settings') body = html`<${Settings} />`;
   else if (page === 'recs') body = html`<${Recs} />`;
   else body = html`<${Records} />`;
-  const tab = ['input', 'records', 'report', 'budget', 'settings'].includes(page) ? page : ['stock', 'assets', 'recs'].includes(page) ? 'settings' : 'records';
+  const tab = ['input', 'records', 'report', 'assets', 'budget', 'settings'].includes(page) ? page : ['stock', 'port'].includes(page) ? 'assets' : page === 'items' ? 'report' : page === 'recs' ? 'settings' : 'records';
 
   const sh = sheet;
   const sheets = {
@@ -89,7 +94,7 @@ function App() {
   return html`<${AppCtx.Provider} value=${app}>
     <main class=${'main' + (page === 'input' || !page ? ' is-input' : '')}>${body}</main>
     <nav class="tabbar" aria-label="画面の切りかえ">
-      ${[['input', '入力'], ['records', 'カレンダー'], ['report', 'レポート'], ['budget', '予算'], ['settings', 'メニュー']].map(([k, l]) => html`<a key=${k} href=${'#/' + k} class=${tab === k ? 'on' : ''}><${Icon} k=${k === 'settings' ? 'more' : k} /><span>${l}</span></a>`)}
+      ${[['input', '入力'], ['records', 'カレンダー'], ['report', 'レポート'], ['assets', '資産'], ['budget', '予算'], ['settings', 'メニュー']].map(([k, l]) => html`<a key=${k} href=${'#/' + k} class=${tab === k ? 'on' : ''}><${Icon} k=${k === 'settings' ? 'more' : k} /><span>${l}</span></a>`)}
     </nav>
     ${S.sync.state === 'err' && getKey() && html`<div class="sync-err" onClick=${() => S.pull()}>同期できませんでした(${S.sync.msg})・押してやり直す</div>`}
     ${sh && sheets[sh.kind] && sheets[sh.kind]()}

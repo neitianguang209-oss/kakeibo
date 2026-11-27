@@ -3,7 +3,8 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { html, useApp, Seg, Sheet, Empty, Field, NumInput } from './ui.js';
 import { LineChart, Spark } from './charts.js';
 import { yen, pm, pct, tone, today, addDays, addMonths, periodKeyOf, parseD, md, short, uid, sum, ym, jpDay } from './util.js';
-import { txs, getConf, summary, cashAt, positions, assetSeries, planBuys, priceAt, unitOf, isFundSym } from './calc.js';
+import { txs, getConf, summary, cashAt, positions, assetSeries, holdingSeries, planBuys, priceAt, unitOf, isFundSym } from './calc.js';
+import { Holdings } from './portfolio.js';
 import { getQuotes, loadQuotes, getEarnings, loadEarnings, PRESET_WATCH, PRESET_FUNDS, PRESET_SEMI } from './quotes.js';
 import * as S from './store.js';
 import { fn, getKey } from './api.js';
@@ -73,11 +74,10 @@ export function Assets({ qv }) {
     await refreshQuotes(true);
     setBusy(false);
   };
-  const stocks = open.filter((p) => !p.plan);
-  const plans = open.filter((p) => p.plan);
+  useEffect(() => { refreshQuotes(); }, [S.all('lot').length, S.all('plan').length]);
 
   return html`<div class="page assets">
-    <header class="top"><button class="icon-btn" onClick=${() => history.back()} aria-label="もどる">‹</button><h1>資産</h1><button class=${'icon-btn' + (busy ? ' spin' : '')} onClick=${reload} aria-label="値段を取り直す">↻</button></header>
+    <header class="top"><span class="bar-l"></span><h1>資産</h1><button class=${'icon-btn' + (busy ? ' spin' : '')} onClick=${reload} aria-label="値段を取り直す">↻</button></header>
     ${!getKey() && html`<div class="note">株価・基準価額を取ってくるには、設定で合言葉を入れてください。</div>`}
     <section class="card hero">
       <div class="label">総資産</div>
@@ -104,25 +104,15 @@ export function Assets({ qv }) {
     </section>
 
 
+    <${Holdings} pos=${pos} q=${q} />
+
     <${Breakdown} cash=${cash} open=${open} inv=${inv} list=${list} />
 
     <${NisaCard} q=${q} open=${open} />
 
-    <${EarningsCard} open=${open} />
-
     <${GoalCard} total=${(cash || 0) + inv} list=${list} conf=${conf} />
 
-
-    <section class="card">
-      <div class="card-h"><h3>📈 持っている株</h3><button class="text-btn" onClick=${() => app.open('lot')}>＋ 買った</button></div>
-      ${stocks.length ? stocks.map((p) => html`<${PosRow} key=${p.symbol} p=${p} q=${q} />`) : html`<p class="muted">「株・投信を買った」から、銘柄・買った日・株数・値段を入れると、今いくらになっているか毎日わかります。</p>`}
-      ${pos.filter((p) => p.closed).length > 0 && html`<details class="closed"><summary>売り切った銘柄</summary>${pos.filter((p) => p.closed).map((p) => html`<div key=${p.symbol} class="row" onClick=${() => app.go('stock/' + encodeURIComponent(p.symbol))}><span class="rm">${p.name}</span><b class=${'num ' + tone(p.realized)}>${pm(p.realized)}円</b></div>`)}</details>`}
-    </section>
-
-    <section class="card">
-      <div class="card-h"><h3>🌱 積立(NISA)</h3><button class="text-btn" onClick=${() => app.open('plan')}>＋ 登録</button></div>
-      ${plans.length ? plans.map((p) => html`<${PlanRow} key=${p.symbol} p=${p} q=${q} />`) : html`<p class="muted">オルカンなどの積立を登録すると、毎月の積立日に自動で口数を足して、投資した額と今の評価額を出します。</p>`}
-    </section>
+    <${EarningsCard} open=${open} />
 
     <${Watch} q=${q} />
 
@@ -132,7 +122,7 @@ export function Assets({ qv }) {
   </div>`;
 }
 
-function PosRow({ p, q }) {
+export function PosRow({ p, q }) {
   const app = useApp();
   const pts = (q[p.symbol]?.points || []).slice(-30).map((x) => x[1]);
   const u = unitOf(p.symbol);
@@ -146,7 +136,7 @@ function PosRow({ p, q }) {
   </button>`;
 }
 
-function PlanRow({ p, q }) {
+export function PlanRow({ p, q }) {
   const app = useApp();
   const pl = p.plan;
   const pts = (q[p.symbol]?.points || []).slice(-60).map((x) => x[1]);
@@ -254,6 +244,14 @@ function Watch({ q }) {
   </section>`;
 }
 
+// 1銘柄の評価額を、持っている数の割合で口座に分ける
+export function acctSplit(p) {
+  const held = Object.entries(p.byAcct || {}).filter(([, n]) => n > 1e-9);
+  const total = sum(held, ([, n]) => n);
+  if (!total) return [['口座の指定なし', p.value]];
+  return held.map(([a, n]) => [a || '口座の指定なし', (p.value * n) / total]);
+}
+
 // ---- 資産の内訳(手元のお金・銘柄ごと・口座ごと)と、まだ登録していない投資
 const PAL = ['var(--s1)', 'var(--s2)', 'var(--s3)', 'var(--s4)', 'var(--c-inv)', 'var(--ink3)'];
 function Breakdown({ cash, open, inv, list }) {
@@ -270,7 +268,7 @@ function Breakdown({ cash, open, inv, list }) {
     if (pos.length > 5) parts.push({ k: 'other', label: 'そのほか', v: sum(pos.slice(5), (p) => p.value) });
   } else {
     const m = new Map();
-    for (const p of open) if (p.value > 0) { const a = p.plan?.acct || p.accts[0] || '口座の指定なし'; m.set(a, (m.get(a) || 0) + p.value); }
+    for (const p of open) if (p.value > 0) for (const [a, v] of acctSplit(p)) m.set(a, (m.get(a) || 0) + v);
     parts = [...m].sort((a, b) => b[1] - a[1]).map(([a, v]) => ({ k: a, label: a, v }));
   }
   parts = [...(cash ? [{ k: 'cash', label: '手元のお金', v: cash, color: 'var(--c-cash)' }] : []), ...parts].map((x, i) => ({ ...x, color: x.color || PAL[(i - (cash ? 1 : 0)) % PAL.length] }));
@@ -392,27 +390,10 @@ export function StockDetail({ symbol }) {
   const ccy = d?.currency === 'USD' ? '$' : '';
   const fmtP = (v) => ccy + Number(v).toLocaleString('ja-JP', { maximumFractionDigits: v < 100 ? 2 : 0 });
 
-  // 積立: 投資額と評価額の推移
-  const planSeries = useMemo(() => {
-    if (!plan) return null;
-    const qq = qc[symbol];
-    const buys = planBuys(plan, qq);
-    if (!buys.length || !qq?.points?.length) return null;
-    const out = [];
-    let units = 0, paid = 0, bi = 0;
-    if (plan.base?.units) { units += +plan.base.units; paid += +plan.base.cost || 0; }
-    const first = parseD(buys[0].date).getTime();
-    const ptsAll = qq.points.filter((x) => x[0] >= first - 864e5);
-    const step = Math.max(1, Math.floor(ptsAll.length / 240));
-    ptsAll.forEach((pt, k) => {
-      while (bi < buys.length && parseD(buys[bi].date).getTime() <= pt[0] + 12 * 3600e3) {
-        if (!(plan.base?.date && buys[bi].date <= plan.base.date)) { units += buys[bi].units; paid += buys[bi].amount; }
-        bi++;
-      }
-      if (k % step === 0 || k === ptsAll.length - 1) out.push({ t: pt[0], value: (units * pt[1]) / unitOf(symbol), paid });
-    });
-    return out;
-  }, [plan, qc[symbol]?.points?.length]);
+  // 自分の持ち分の推移(評価額と投資した元本)
+  const [hrange, setHrange] = useState(365);
+  useEffect(() => { if (plan) loadQuotes([symbol], 'all').then(() => force((x) => x + 1)); }, [symbol, !!plan]);
+  const mineSeries = useMemo(() => (plan || lots.length ? holdingSeries([symbol], qc, fx, hrange) : []), [S.getVersion(), symbol, hrange, qc[symbol]?.points?.length, qc[symbol]?.cur, fx]);
 
   return html`<div class="page detail">
     <header class="top"><button class="icon-btn" onClick=${() => history.back()} aria-label="もどる">‹</button><h1 class="dt">${shortName(d?.name || p?.name || symbol)}</h1><span class="sym">${symbol}</span></header>
@@ -441,11 +422,12 @@ export function StockDetail({ symbol }) {
         ${p.realized ? html`<div><span>確定した損益</span><b class=${'num ' + tone(p.realized)}>${pm(p.realized)}円</b></div>` : null}
       </div>
     </section>`}
-    ${planSeries && html`<section class="card">
-      <div class="card-h"><h3>積立の歩み</h3></div>
-      <${LineChart} xs=${planSeries.map((x) => x.t)} height=${190} fmtX=${fmtX} fmtY=${(v, full) => (full ? yen(v) : short(v))}
-        series=${[{ key: 'v', label: '評価額', color: 'var(--c-inv)', values: planSeries.map((x) => x.value), area: true }, { key: 'p', label: '積み立てた額', color: 'var(--ink3)', values: planSeries.map((x) => x.paid), dash: true }]} />
-      <div class="row-btns"><button class="btn small" onClick=${() => app.open('plan', plan)}>積立の設定を直す</button><button class="btn small ghost" onClick=${() => app.open('planbase', plan)}>口数を合わせる</button></div>
+    ${mineSeries.length > 1 && html`<section class="card">
+      <div class="card-h"><h3>${plan ? '積立の歩み' : '自分の持ち分の推移'}</h3></div>
+      <${Seg} small value=${hrange} onChange=${setHrange} options=${[{ v: 30, label: '1か月' }, { v: 91, label: '3か月' }, { v: 365, label: '1年' }, { v: 3650, label: '全部' }]} />
+      <${LineChart} xs=${mineSeries.map((x) => x.ts)} height=${190} fmtX=${fmtX} fmtY=${(v, full) => (full ? yen(v) : short(v))}
+        series=${[{ key: 'v', label: '評価額', color: 'var(--c-inv)', values: mineSeries.map((x) => x.value), area: true }, { key: 'p', label: plan ? '積み立てた額' : '投資した元本', color: 'var(--ink3)', values: mineSeries.map((x) => x.cost), dash: true }]} />
+      ${plan && html`<div class="row-btns"><button class="btn small" onClick=${() => app.open('plan', plan)}>積立の設定を直す</button><button class="btn small ghost" onClick=${() => app.open('planbase', plan)}>口数を合わせる</button></div>`}
     </section>`}
     <section class="card">
       <div class="card-h"><h3>売り買いの記録</h3></div>

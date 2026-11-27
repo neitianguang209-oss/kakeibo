@@ -26,7 +26,7 @@ export function Sheet({ title, onClose, children, full, foot, right }) {
     document.body.classList.add('noscroll');
     return () => {
       window.removeEventListener('keydown', k);
-      document.body.classList.remove('noscroll');
+      if (!document.querySelector('.sheet-wrap')) document.body.classList.remove('noscroll');
     };
   }, []);
   return html`<div class=${'sheet-wrap' + (closing ? ' closing' : '')} onClick=${(e) => e.target === e.currentTarget && close()}>

@@ -74,7 +74,8 @@ export function LineChart({ xs, series, height = 200, fmtY = (v) => v, fmtX = (t
   let min = Math.min(...all, ...(baseline != null ? [baseline] : [])), max = Math.max(...all, ...(baseline != null ? [baseline] : []));
   if (zero) min = Math.min(0, min);
   const pad = (max - min) * 0.08 || Math.abs(max) * 0.05 || 1;
-  const ticks = niceTicks(min - pad * (zero && min === 0 ? 0 : 1), max + pad);
+  // 全部プラスの金額なのに、余白のせいで目盛りがマイナスにならないように
+  const ticks = niceTicks(min >= 0 ? Math.max(0, min - pad) : min - pad, max + pad);
   const y0 = ticks[0], y1 = ticks.at(-1);
   const n = xs.length;
   const X = (i) => padL + (n === 1 ? 0.5 : i / (n - 1)) * (W - padL - padR);
